@@ -1,0 +1,6 @@
+{
+  "name": "NihonGo Reflex - Hệ Thống Học Tiếng Nhật Toàn Diện & JLPT Mastery",
+  "description": "Ứng dụng học tiếng Nhật toàn diện: xóa mất gốc, chuẩn hóa Pitch Accent & phản xạ nghe nói, thuật toán SRS ghi nhớ sâu, bản chất ngữ pháp và luyện thi JLPT N5-N1.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
