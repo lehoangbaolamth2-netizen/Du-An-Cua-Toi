@@ -154,6 +154,8 @@ apiRouter.post('/auth/google', async (req, res) => {
         email: user.email,
         name: user.name,
         avatar_url: user.avatar_url,
+        google_avatar_url: user.google_avatar_url || user.avatar_url,
+        avatar_source: user.avatar_source || 'google',
         role: user.role,
         status: user.status,
         target_level: user.target_level || 'N3',
@@ -181,6 +183,8 @@ apiRouter.get('/auth/me', requireAuth, (req: AuthenticatedRequest, res: Response
       email: user.email,
       name: user.name,
       avatar_url: user.avatar_url,
+      google_avatar_url: user.google_avatar_url || user.avatar_url,
+      avatar_source: user.avatar_source || 'google',
       role: user.role,
       status: user.status,
       target_level: user.target_level || 'N3',
@@ -206,11 +210,12 @@ apiRouter.post('/auth/logout', (req, res) => {
 
 apiRouter.put('/user/profile', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
-  const { name, avatar_url, target_level } = req.body;
+  const { name, avatar_url, avatar_source, target_level } = req.body;
 
   const updates: Partial<DbUser> = {};
   if (typeof name === 'string' && name.trim()) updates.name = name.trim();
   if (typeof avatar_url === 'string' && avatar_url.trim()) updates.avatar_url = avatar_url.trim();
+  if (avatar_source === 'google' || avatar_source === 'custom') updates.avatar_source = avatar_source;
   if (typeof target_level === 'string' && target_level.trim()) updates.target_level = target_level.trim();
 
   const updated = db.updateUser(user.id, updates);
@@ -221,6 +226,22 @@ apiRouter.put('/user/profile', requireAuth, (req: AuthenticatedRequest, res: Res
   return res.status(200).json({
     success: true,
     message: 'Cập nhật hồ sơ cá nhân thành công!',
+    user: updated,
+  });
+});
+
+apiRouter.post('/user/avatar/revert-google', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const user = req.user!;
+  const updated = db.updateUser(user.id, {
+    avatar_source: 'google',
+    avatar_url: user.google_avatar_url || user.avatar_url,
+  });
+  if (!updated) {
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'Không tìm thấy thông tin tài khoản.' });
+  }
+  return res.status(200).json({
+    success: true,
+    message: 'Đã hoàn tác và sử dụng lại ảnh đại diện chính thức từ Google!',
     user: updated,
   });
 });

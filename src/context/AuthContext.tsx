@@ -16,7 +16,13 @@ interface AuthContextType {
     avatar_url?: string;
   }) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
-  updateProfile: (data: { name?: string; avatar_url?: string; target_level?: string }) => Promise<boolean>;
+  updateProfile: (data: {
+    name?: string;
+    avatar_url?: string;
+    avatar_source?: 'google' | 'custom';
+    target_level?: string;
+  }) => Promise<boolean>;
+  revertToGoogleAvatar: () => Promise<boolean>;
   refreshUser: () => Promise<void>;
   switchAccountPreset: (presetType: 'admin' | 'user' | 'assistant') => Promise<void>;
 }
@@ -122,7 +128,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  const updateProfile = async (data: { name?: string; avatar_url?: string; target_level?: string }) => {
+  const updateProfile = async (data: {
+    name?: string;
+    avatar_url?: string;
+    avatar_source?: 'google' | 'custom';
+    target_level?: string;
+  }) => {
     if (!token) return false;
     try {
       const res = await fetch('/api/user/profile', {
@@ -132,6 +143,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(data),
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        setUser(resData.user);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const revertToGoogleAvatar = async () => {
+    if (!token) return false;
+    try {
+      const res = await fetch('/api/user/avatar/revert-google', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (res.ok) {
@@ -193,6 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         logout,
         updateProfile,
+        revertToGoogleAvatar,
         refreshUser,
         switchAccountPreset,
       }}

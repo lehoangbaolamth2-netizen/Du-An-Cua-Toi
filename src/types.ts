@@ -5,13 +5,16 @@ export type JLPTLevel = 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
 // ==========================================
 export type UserRole = 'user' | 'admin' | 'superadmin';
 export type UserStatus = 'active' | 'suspended' | 'banned';
+export type AvatarSource = 'google' | 'custom';
 
 export interface UserProfile {
   id: string;
   google_sub: string; // Khóa định danh Google duy nhất bất biến (không dùng email làm ID chính)
   email: string;
   name: string;
-  avatar_url: string;
+  avatar_url: string; // URL avatar đang hiển thị (ảnh Google hoặc ảnh custom)
+  google_avatar_url?: string; // URL ảnh gốc từ tài khoản Google (lưu riêng, không bị ghi đè)
+  avatar_source?: AvatarSource; // 'google' | 'custom'
   role: UserRole;
   status: UserStatus;
   target_level?: string;

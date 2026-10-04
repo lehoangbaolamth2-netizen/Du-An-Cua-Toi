@@ -8,13 +8,16 @@ const __dirname = path.dirname(__filename);
 
 export type UserRole = 'user' | 'admin' | 'superadmin';
 export type UserStatus = 'active' | 'suspended' | 'banned';
+export type AvatarSource = 'google' | 'custom';
 
 export interface DbUser {
   id: string;
   google_sub: string;
   email: string;
   name: string;
-  avatar_url: string;
+  avatar_url: string; // Ảnh đại diện hiển thị hiện tại
+  google_avatar_url: string; // Lưu vĩnh viễn ảnh gốc từ tài khoản Google
+  avatar_source: AvatarSource; // 'google' | 'custom'
   role: UserRole;
   status: UserStatus;
   created_at: string;
@@ -96,6 +99,8 @@ const INITIAL_DATA: DatabaseSchema = {
       email: ADMIN_DEFAULT_EMAIL,
       name: 'Lê Hoàng Bảo Lâm (Chủ Quản)',
       avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      google_avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      avatar_source: 'google',
       role: 'superadmin',
       status: 'active',
       created_at: '2026-01-01T00:00:00.000Z',
@@ -111,6 +116,8 @@ const INITIAL_DATA: DatabaseSchema = {
       email: 'nguyenvana@gmail.com',
       name: 'Nguyễn Văn An',
       avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      google_avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      avatar_source: 'google',
       role: 'user',
       status: 'active',
       created_at: '2026-02-15T08:30:00.000Z',
@@ -125,7 +132,9 @@ const INITIAL_DATA: DatabaseSchema = {
       google_sub: '107384950293847561029',
       email: 'tranthimai@gmail.com',
       name: 'Trần Thị Mai',
-      avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+      avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+      google_avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+      avatar_source: 'custom',
       role: 'user',
       status: 'active',
       created_at: '2026-03-10T09:15:00.000Z',
@@ -141,6 +150,8 @@ const INITIAL_DATA: DatabaseSchema = {
       email: 'phamhoanglong@gmail.com',
       name: 'Phạm Hoàng Long',
       avatar_url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
+      google_avatar_url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
+      avatar_source: 'google',
       role: 'user',
       status: 'suspended',
       created_at: '2026-04-01T11:00:00.000Z',
@@ -156,6 +167,8 @@ const INITIAL_DATA: DatabaseSchema = {
       email: 'lequocbao.sensei@gmail.com',
       name: 'Lê Quốc Bảo (Trợ Lý Giảng Viên)',
       avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+      google_avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+      avatar_source: 'google',
       role: 'admin',
       status: 'active',
       created_at: '2026-01-20T10:00:00.000Z',
@@ -298,6 +311,19 @@ class DatabaseManager {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
+
+        // Ensure backward compatibility: populate google_avatar_url & avatar_source if missing
+        if (Array.isArray(parsed.users)) {
+          parsed.users.forEach((u: DbUser) => {
+            if (!u.google_avatar_url) {
+              u.google_avatar_url = u.avatar_url;
+            }
+            if (!u.avatar_source) {
+              u.avatar_source = 'google';
+            }
+          });
+        }
+
         // Ensure initial superadmin exists
         const adminIndex = parsed.users.findIndex(
           (u: DbUser) => u.email.toLowerCase() === ADMIN_DEFAULT_EMAIL.toLowerCase() || u.google_sub === ADMIN_DEFAULT_SUB
@@ -360,17 +386,26 @@ class DatabaseManager {
     );
 
     const now = new Date().toISOString();
-
-    // Check if this is the superadmin account
     const isOwnerEmail = userData.email.toLowerCase() === ADMIN_DEFAULT_EMAIL.toLowerCase();
 
     if (existingIndex !== -1) {
       const existing = this.data.users[existingIndex];
+      // Luôn cập nhật hoặc bảo tồn URL ảnh gốc của Google
+      const freshGoogleAvatar = userData.avatar_url || existing.google_avatar_url || existing.avatar_url;
+
+      // QUY TẮC QUAN TRỌNG:
+      // Nếu user đã đổi sang avatar tùy chỉnh (avatar_source === 'custom'), KHÔNG ghi đè ảnh riêng bằng ảnh Google!
+      // Nếu user đang dùng avatar Google (avatar_source === 'google'), cập nhật theo ảnh Google mới nhất.
+      const isCustomAvatar = existing.avatar_source === 'custom' && !!existing.avatar_url;
+      const displayAvatar = isCustomAvatar ? existing.avatar_url : freshGoogleAvatar;
+
       const updated: DbUser = {
         ...existing,
-        google_sub: userData.google_sub, // Always sync sub
+        google_sub: userData.google_sub, // Khóa ID Google bất biến
         name: userData.name || existing.name,
-        avatar_url: userData.avatar_url || existing.avatar_url,
+        google_avatar_url: freshGoogleAvatar,
+        avatar_url: displayAvatar,
+        avatar_source: existing.avatar_source || 'google',
         last_login_at: now,
         updated_at: now,
         role: isOwnerEmail ? 'superadmin' : existing.role,
@@ -380,13 +415,16 @@ class DatabaseManager {
       return { user: updated, isNew: false };
     }
 
-    // Create new user
+    // Đăng ký tài khoản mới: Mặc định dùng ảnh Google, lưu Google sub làm ID liên kết
+    const initialGoogleAvatar = userData.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
     const newUser: DbUser = {
       id: `usr_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       google_sub: userData.google_sub,
       email: userData.email,
       name: userData.name || 'Người học Nhật ngữ',
-      avatar_url: userData.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      avatar_url: initialGoogleAvatar,
+      google_avatar_url: initialGoogleAvatar,
+      avatar_source: 'google',
       role: isOwnerEmail ? 'superadmin' : 'user',
       status: 'active',
       created_at: now,
@@ -407,9 +445,27 @@ class DatabaseManager {
     if (idx === -1) return null;
 
     const current = this.data.users[idx];
+
+    // QUY TẮC BẢO MẬT BẤT BIẾN:
+    // Email Google và Google sub (ID) không được sửa tùy tiện
+    const safeUpdates: Partial<DbUser> = { ...updates };
+    delete (safeUpdates as any).google_sub;
+    delete (safeUpdates as any).email;
+    delete (safeUpdates as any).id;
+
+    // Xử lý luồng avatar riêng vs ảnh Google:
+    if (safeUpdates.avatar_source === 'google') {
+      // Người dùng chọn "Dùng lại ảnh Google": khôi phục ảnh từ google_avatar_url
+      safeUpdates.avatar_url = current.google_avatar_url || current.avatar_url;
+      safeUpdates.avatar_source = 'google';
+    } else if (safeUpdates.avatar_url && safeUpdates.avatar_url !== current.google_avatar_url) {
+      // Người dùng tải lên/nhập ảnh riêng mới
+      safeUpdates.avatar_source = 'custom';
+    }
+
     const updated: DbUser = {
       ...current,
-      ...updates,
+      ...safeUpdates,
       updated_at: new Date().toISOString(),
     };
     this.data.users[idx] = updated;

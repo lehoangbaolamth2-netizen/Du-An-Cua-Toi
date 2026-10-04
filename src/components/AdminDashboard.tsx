@@ -519,14 +519,27 @@ export const AdminDashboard: React.FC = () => {
             </div>
           </div>
 
+          {/* Security Notice on User Management */}
+          <div className="p-3.5 rounded-2xl bg-indigo-950/20 border border-indigo-800/40 flex items-start gap-3 text-xs">
+            <Shield className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold text-slate-200">
+                Chính sách bảo mật Google OAuth & Quyền hạn Quản trị:
+              </span>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Quá trình xác thực được mã hóa trực tiếp bởi Google OAuth. Máy chủ và Quản trị viên <strong>tuyệt đối không bao giờ lưu trữ hoặc xem mật khẩu Google</strong> của người dùng. Admin sở hữu các quyền quản lý vận hành: xem danh sách, đổi vai trò (Role), khóa/mở tài khoản (Status), và kiểm tra định danh bảo mật Google sub.
+              </p>
+            </div>
+          </div>
+
           {/* User Table */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="py-3.5 px-4">Người dùng</th>
-                    <th className="py-3.5 px-4">Google sub</th>
+                    <th className="py-3.5 px-4">Người dùng & Nguồn ảnh</th>
+                    <th className="py-3.5 px-4">Google sub (ID)</th>
                     <th className="py-3.5 px-4">Vai trò (Role)</th>
                     <th className="py-3.5 px-4">Trạng thái (Status)</th>
                     <th className="py-3.5 px-4">Cấp độ & Tiến độ</th>
@@ -543,17 +556,34 @@ export const AdminDashboard: React.FC = () => {
                         {/* Name & Email */}
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={u.avatar_url}
-                              alt={u.name}
-                              className="w-9 h-9 rounded-xl object-cover border border-slate-700"
-                            />
+                            <div className="relative shrink-0">
+                              <img
+                                src={u.avatar_url}
+                                alt={u.name}
+                                className="w-10 h-10 rounded-xl object-cover border border-slate-700 bg-slate-950"
+                              />
+                              <span
+                                className={`absolute -bottom-1 -right-1 text-[8px] font-black uppercase px-1 py-0.2 rounded shadow-sm ${
+                                  u.avatar_source === 'custom'
+                                    ? 'bg-purple-900/90 text-purple-200 border border-purple-600/50'
+                                    : 'bg-blue-900/90 text-blue-200 border border-blue-600/50'
+                                }`}
+                                title={u.avatar_source === 'custom' ? 'Ảnh riêng tự chọn (Custom)' : 'Ảnh đồng bộ từ Google'}
+                              >
+                                {u.avatar_source === 'custom' ? 'Riêng' : 'Google'}
+                              </span>
+                            </div>
                             <div>
                               <div className="font-bold text-white flex items-center gap-1.5">
                                 <span>{u.name}</span>
                                 {isSelf && <span className="text-[10px] text-indigo-400 font-semibold">(Bạn)</span>}
                               </div>
-                              <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
+                              <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                                <span className="truncate">{u.email}</span>
+                                <span title="Email Google cố định (Readonly)" className="inline-flex items-center">
+                                  <Lock className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </td>

@@ -208,8 +208,10 @@ export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <span>🧪 Tài khoản thử nghiệm</span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-black">TEST</span>
+            <span>🧪 Development/Test</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black tracking-wider shadow-sm">
+              DEMO MODE
+            </span>
           </button>
 
           <button
@@ -223,7 +225,7 @@ export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <span>🔵 Google OAuth Thật</span>
+            <span>🔵 Production (Google Thật)</span>
           </button>
         </div>
 
