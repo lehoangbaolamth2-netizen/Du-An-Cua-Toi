@@ -10,8 +10,11 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { apiRouter } from './server/apiRoutes.js';
+
 const app = express();
 app.use(express.json());
+app.use('/api', apiRouter);
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 const ai = apiKey

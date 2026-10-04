@@ -1,5 +1,82 @@
 export type JLPTLevel = 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
 
+// ==========================================
+// ROLE-BASED ACCESS CONTROL (RBAC) & USER TYPES
+// ==========================================
+export type UserRole = 'user' | 'admin' | 'superadmin';
+export type UserStatus = 'active' | 'suspended' | 'banned';
+
+export interface UserProfile {
+  id: string;
+  google_sub: string; // Khóa định danh Google duy nhất bất biến (không dùng email làm ID chính)
+  email: string;
+  name: string;
+  avatar_url: string;
+  role: UserRole;
+  status: UserStatus;
+  target_level?: string;
+  created_at: string;
+  last_login_at: string;
+  total_study_minutes?: number;
+  completed_lessons?: number;
+}
+
+export interface AdminAuditLogItem {
+  id: string;
+  admin_id: string;
+  admin_email: string;
+  action: string;
+  target_type: 'user' | 'content' | 'settings' | 'security';
+  target_id: string;
+  target_name?: string;
+  reason: string;
+  ip: string;
+  device: string;
+  result: 'SUCCESS' | 'FAILED';
+  timestamp: string;
+}
+
+export interface AdminContentItem {
+  id: string;
+  level: 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
+  module: 'grammar' | 'listening' | 'pitch' | 'flashcard' | 'dokkai';
+  title: string;
+  summary: string;
+  status: 'published' | 'draft';
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminSystemStats {
+  summary: {
+    totalUsers: number;
+    activeUsers: number;
+    suspendedUsers: number;
+    bannedUsers: number;
+    dau: number;
+    wau: number;
+    mau: number;
+    totalStudyHours: number;
+    totalCompletedLessons: number;
+    completionRate: string;
+    publishedContentsCount: number;
+    auditLogsCount: number;
+  };
+  levelDistribution: { name: string; count: number; percentage: number }[];
+  dailyGrowth: { day: string; users: number; active: number }[];
+}
+
+export interface AdminSystemSettings {
+  maintenance_mode: boolean;
+  registration_open: boolean;
+  max_daily_ai_requests: number;
+  allow_guest_preview: boolean;
+  app_name: string;
+  support_email: string;
+  updated_at: string;
+}
+
 export type PitchType = 'H' | 'L' | 'D'; // High, Low, Drop
 
 export interface MoraPitch {
@@ -133,6 +210,8 @@ export interface Flashcard {
   collocations: string[];
   synonyms: string[];
   antonyms: string[];
+  category?: string; // Chuyên ngành: IT, Kinh tế, Y tế, Cơ khí, Dịch vụ, Thường nhật...
+  difficulty?: 'easy' | 'medium' | 'hard' | 'expert'; // Dễ nhớ, Khó, Chuyên môn
   // SRS parameters
   srs: {
     repetitions: number;
@@ -151,6 +230,189 @@ export interface GrammarItem {
   lessonNumber?: string;
   grammar: string;
   meaning: string;
+
+  // 1. GIẢI THÍCH SIÊU CƠ BẢN
+  simpleExplanation?: {
+    whatFor: string; // Mẫu này dùng để làm gì?
+    whenToUse: string; // Người Nhật dùng nó trong tình huống nào?
+    plainSummary: string; // Giải thích tiếng Việt đơn giản, tránh thuật ngữ khó
+  };
+
+  // 2. CẤU TRÚC & PHÂN TÍCH THÀNH PHẦN
+  structures?: {
+    formula: string; // Công thức hiển thị rõ ràng
+    verbRule?: string;
+    adjectiveRule?: string;
+    nounRule?: string;
+    relatedForms?: string;
+    exceptions?: string[];
+    breakdownExamples: {
+      sentence: string;
+      furigana?: string;
+      translation: string;
+      components: {
+        part: string;
+        role: string;
+        explanation: string;
+      }[];
+    }[];
+  };
+
+  // 3. VÍ DỤ THEO 3 CẤP ĐỘ (🟢 Cơ bản - 🟡 Trung cấp - 🔴 Nâng cao)
+  threeTierExamples?: {
+    basic: {
+      japanese: string;
+      furigana?: string;
+      romaji: string;
+      vietnamese: string;
+      whyThisPattern: string;
+    };
+    intermediate: {
+      japanese: string;
+      furigana?: string;
+      romaji: string;
+      vietnamese: string;
+      whyThisPattern: string;
+    };
+    advanced: {
+      japanese: string;
+      furigana?: string;
+      romaji: string;
+      vietnamese: string;
+      whyThisPattern: string;
+    };
+  };
+
+  // 4. SO SÁNH MẪU DỄ NHẦM & KHI KHÔNG NÊN DÙNG
+  confusingComparisons?: {
+    patterns: {
+      pattern: string;
+      meaning: string;
+      politenessLevel: string; // Mức lịch sự
+      nuance: string; // Sắc thái
+      usageSituation: string; // Tình huống dùng
+    }[];
+    whenNotToUse: string; // ⚠️ Khi KHÔNG nên dùng mẫu này
+  };
+
+  // 5 & 6. HỌC CHỦ ĐỘNG (5 DẠNG BÀI) & CHẨN ĐOÁN LỖI THÔNG MINH
+  activeLearning?: {
+    recognition: {
+      question: string;
+      options: { id: string; text: string; isCorrect: boolean; explanation: string }[];
+    };
+    fillInBlank: {
+      prompt: string;
+      rawSentence: string;
+      targetForm: string;
+      expectedAnswer: string;
+      acceptableVariants?: string[];
+      hint: string;
+      errorDiagnosis?: {
+        commonMistake: string;
+        errorType: 'conjugation' | 'particle' | 'nuance' | 'politeness' | 'keigo' | 'wordOrder' | 'vocabulary' | 'kanji';
+        analysis: string;
+        ruleToRemember: string;
+        similarExample: string;
+      };
+    };
+    fixError: {
+      wrongSentence: string;
+      errorHighlight: string;
+      correctSentence: string;
+      errorType: 'conjugation' | 'particle' | 'nuance' | 'politeness' | 'keigo' | 'wordOrder' | 'vocabulary' | 'kanji';
+      diagnosticAnalysis: string;
+      ruleToRemember: string;
+      similarExample: string;
+    };
+    translation: {
+      vietnamese: string;
+      expectedJapanese: string;
+      sampleCorrect: string;
+      keywords: string[];
+      tip: string;
+    };
+    reflex: {
+      scenario: string;
+      taskPrompt: string;
+      sampleSpeech: string;
+      reflexMindset: string;
+    };
+  };
+
+  // 7. SẮC THÁI NGƯỜI NHẬT (NUANCE SPECTRUM)
+  nuanceSpectrum?: {
+    casual: { japanese: string; situation: string; levelLabel: string };
+    polite: { japanese: string; situation: string; levelLabel: string };
+    respectful: { japanese: string; situation: string; levelLabel: string };
+    businessKeigo: { japanese: string; situation: string; levelLabel: string };
+    writtenFormal?: { japanese: string; situation: string; levelLabel: string };
+    insight: string;
+  };
+
+  // 8. PHẦN "HỌC KĨ" (DEEP DIVE ACCORDION)
+  deepDive?: {
+    originEtymology?: string; // Nguồn gốc/cấu trúc ngữ pháp
+    nuanceDetails: string; // Sắc thái
+    usageConditions: string; // Điều kiện sử dụng
+    exceptions: string[]; // Ngoại lệ
+    equivalentPatterns: string[]; // Mẫu tương đương
+    oppositePatterns: string[]; // Mẫu trái nghĩa hoặc đối lập
+    commonVietnameseMistakes: string[]; // Những lỗi người Việt thường mắc
+  };
+
+  // TÍNH NĂNG "TẠI SAO KHÔNG DÙNG MẪU KIA?"
+  whyNotTheOther?: {
+    situation: string;
+    targetChoiceQuestion: string;
+    options: {
+      id: string;
+      text: string;
+      isGrammaticallyCorrect: boolean;
+      politenessLevel: string;
+      relationshipFit: string;
+      businessAppropriateness: string;
+      friendAlternative: string;
+      verdict: string;
+      isRecommended: boolean;
+    }[];
+    thinkingRule: string; // Quy tắc tư duy giúp tự chọn đúng
+  };
+
+  // 9. KIỂM TRA SAU BÀI (MINI-TEST 5 CÂU)
+  miniTest?: {
+    questions: {
+      id: string;
+      tier: 'basic' | 'application' | 'nuance'; // 2 câu cơ bản, 2 vận dụng, 1 sắc thái
+      question: string;
+      options: { id: string; text: string; isCorrect: boolean; explanation: string }[];
+    }[];
+  };
+
+  // 10. HỆ THỐNG GHI NHỚ (FLASHCARDS / SRS INTEGRATION)
+  takeawayMemory?: {
+    goldenQuote: string; // 1 câu ghi nhớ ngắn
+    avoidTrap: string; // 1 lỗi cần tránh
+    realLifeScenario: string; // 1 tình huống thực tế
+    srsCards: {
+      front: string;
+      back: string;
+      mnemonic: string;
+      level: JLPTLevel;
+    }[];
+  };
+
+  // GRAMMAR MAP & LỘ TRÌNH TƯ DUY
+  grammarMap?: {
+    current: string;
+    prerequisites: string[]; // Đã biết
+    nextRecommendations: string[]; // Nên học tiếp
+    easyToConfuseWith: string[]; // Dễ nhầm với
+    advancedKnowledge: string[]; // Kiến thức nâng cao
+    branchDiagramText?: string; // Sơ đồ nhánh
+  };
+
+  // Legacy fields preserved for backward compatibility
   essenceMeaning: {
     coreMindset: string;
     literalVsReal: string;

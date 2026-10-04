@@ -104,7 +104,32 @@ export function loadFlashcardsFromStorage(fallback: Flashcard[]): Flashcard[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // If parsed cards have less than the full presets, merge to include all cards
+        const storedMap = new Map<string, Flashcard>();
+        parsed.forEach((c) => {
+          if (c && c.id) storedMap.set(c.id, c);
+        });
+
+        // Merge: take stored version if exists (to preserve review progress), otherwise take fallback card
+        const merged: Flashcard[] = fallback.map((fbCard) => {
+          const storedCard = storedMap.get(fbCard.id);
+          if (storedCard) {
+            return {
+              ...fbCard,
+              srs: storedCard.srs || fbCard.srs
+            };
+          }
+          return fbCard;
+        });
+
+        // Also keep any custom created cards that were added by user but not in fallback
+        parsed.forEach((c) => {
+          if (c && c.id && !fallback.some((fb) => fb.id === c.id)) {
+            merged.push(c);
+          }
+        });
+
+        return merged;
       }
     }
   } catch (e) {

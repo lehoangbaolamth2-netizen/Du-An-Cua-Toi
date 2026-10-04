@@ -28,9 +28,18 @@ import {
   Headphones,
   Check,
   Flame,
-  ArrowRight
+  ArrowRight,
+  ShieldAlert,
+  Maximize,
+  AlertOctagon,
+  Lock,
+  Unlock,
+  Send,
+  Info,
+  X
 } from 'lucide-react';
 import { ChoukaiIllustrationView } from './ChoukaiIllustrationView';
+import { recordStudyMinutes } from '../services/studyTracker';
 
 interface Props {
   currentLevel: string;
@@ -62,6 +71,33 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
   // Test mode: 'full' (full official exam package ~40 questions) or 'quick' (5 questions)
   const [testMode, setTestMode] = useState<'full' | 'quick'>('full');
 
+  // Base questions determined by test mode
+  const baseQuestions: JLPTQuestion[] =
+    testMode === 'quick' ? activePackage.questions.slice(0, 5) : activePackage.questions;
+
+  // Exam format: 'standard120' (Kỳ thi chuẩn 120 phút - 3 phần nghiêm ngặt) | 'practice' (Luyện tự do)
+  const [examStandardMode, setExamStandardMode] = useState<'standard120' | 'practice'>('standard120');
+
+  // User selections and general test state
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
+  const [isTestSubmitted, setIsTestSubmitted] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'test' | 'history' | 'mistakes'>('test');
+
+  // Stored histories & wrong question IDs
+  const [testHistories, setTestHistories] = useState<JLPTTestHistory[]>([]);
+  const [mistakeQuestionIds, setMistakeQuestionIds] = useState<string[]>([]);
+
+  // Practice timer states
+  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState<number>(activePackage.totalTimeMinutes * 60);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
+
+  // Script visibility toggle for Listening (Chokai) questions
+  const [revealedScripts, setRevealedScripts] = useState<Record<string, boolean>>({});
+
+  // Audio playback state
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [audioSpeed, setAudioSpeed] = useState<number>(1.0);
+
   // Section filter inside test: 'all' | 'vocabulary' | 'grammar' | 'reading' | 'listening'
   const [selectedSection, setSelectedSection] = useState<'all' | JLPTSectionType>('all');
   // Sub-filter for reading questions: 'all' | 'setsumei' | 'notice' | 'search'
@@ -71,13 +107,36 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
   // Toggle for highlighting conjunctions/transition markers
   const [highlightConnectives, setHighlightConnectives] = useState<boolean>(true);
 
-  // Active questions pool
-  const baseQuestions: JLPTQuestion[] =
-    testMode === 'full'
-      ? activePackage.questions
-      : (JLPT_QUESTION_PRESETS.find((p) => p.level === examLevel)?.questions || activePackage.questions.slice(0, 5));
+  // 3-Phase standard exam state:
+  // Phase 1: Từ vựng & Kanji (40 phút, 40 điểm)
+  // Phase 2: Ngữ pháp & Đọc hiểu (40 phút, 40 điểm)
+  // Phase 3: Nghe hiểu (40 phút, 40 điểm, phải nghe hết giờ)
+  const [currentPhase, setCurrentPhase] = useState<1 | 2 | 3>(1);
+  const [phaseTimeRemaining, setPhaseTimeRemaining] = useState<number>(40 * 60);
+  const [submittedPhases, setSubmittedPhases] = useState<Record<number, boolean>>({});
+  const [isEarlySubmitDialogOpen, setIsEarlySubmitDialogOpen] = useState<boolean>(false);
 
-  const filteredQuestions = baseQuestions.filter((q) => {
+  // Anti-Cheat & Fullscreen state
+  const [isExamStarted, setIsExamStarted] = useState<boolean>(false);
+  const [violationCount, setViolationCount] = useState<number>(0);
+  const [isCheatWarningModalOpen, setIsCheatWarningModalOpen] = useState<boolean>(false);
+  const [isExamDisqualified, setIsExamDisqualified] = useState<boolean>(false);
+
+  // Center Score Report Modal
+  const [isCenterScoreModalOpen, setIsCenterScoreModalOpen] = useState<boolean>(false);
+
+  // Phase Questions Separation for Standard 120-Min Exam
+  const phase1Questions = baseQuestions.filter(
+    (q: JLPTQuestion) => q.section === 'vocabulary'
+  );
+  const phase2Questions = baseQuestions.filter(
+    (q: JLPTQuestion) => q.section === 'grammar' || q.section === 'reading'
+  );
+  const phase3Questions = baseQuestions.filter(
+    (q: JLPTQuestion) => q.section === 'listening'
+  );
+
+  const filteredQuestions = baseQuestions.filter((q: JLPTQuestion) => {
     if (selectedSection !== 'all' && q.section !== selectedSection) {
       return false;
     }
@@ -102,25 +161,15 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
     return true;
   });
 
-  // User selections
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
-  const [isTestSubmitted, setIsTestSubmitted] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'test' | 'history' | 'mistakes'>('test');
-
-  // Script visibility toggle for Listening (Chokai) questions
-  const [revealedScripts, setRevealedScripts] = useState<Record<string, boolean>>({});
-
-  // Audio playback state
-  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
-  const [audioSpeed, setAudioSpeed] = useState<number>(1.0);
-
-  // Timer states
-  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState<number>(activePackage.totalTimeMinutes * 60);
-  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
-
-  // Stored histories & wrong question IDs
-  const [testHistories, setTestHistories] = useState<JLPTTestHistory[]>([]);
-  const [mistakeQuestionIds, setMistakeQuestionIds] = useState<string[]>([]);
+  // Active questions determined by standard 120-min phase or free practice
+  const activeQuestions =
+    examStandardMode === 'standard120'
+      ? currentPhase === 1
+        ? phase1Questions
+        : currentPhase === 2
+        ? phase2Questions
+        : phase3Questions
+      : filteredQuestions;
 
   // Load from local storage
   useEffect(() => {
@@ -134,6 +183,194 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
       console.error(e);
     }
   }, []);
+
+  // Anti-Cheat & Fullscreen Monitoring Effect
+  useEffect(() => {
+    if (!isExamStarted || isTestSubmitted || isExamDisqualified || examStandardMode !== 'standard120') return;
+
+    const triggerViolation = (reason: string) => {
+      setViolationCount((prev) => {
+        const next = prev + 1;
+        if (next > 3) {
+          setIsExamDisqualified(true);
+          setIsTestSubmitted(true);
+          setIsCenterScoreModalOpen(true);
+
+          const disqHistory: JLPTTestHistory = {
+            id: 'test-disq-' + Date.now(),
+            testTitle: `${activePackage.title} [HỦY BÀI: VI PHẠM CHÍNH SÁCH THI]`,
+            level: examLevel,
+            score: 0,
+            totalQuestions: 120,
+            date: new Date().toLocaleString('vi-VN'),
+            wrongQuestionIds: baseQuestions.map((q: JLPTQuestion) => q.id),
+          };
+          const updated = [disqHistory, ...testHistories];
+          setTestHistories(updated);
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+        } else {
+          setIsCheatWarningModalOpen(true);
+        }
+        return next;
+      });
+    };
+
+    const handleFullscreenChange = () => {
+      const isFull = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      if (!isFull && isExamStarted && !isTestSubmitted && !isExamDisqualified) {
+        triggerViolation('Thoát toàn màn hình');
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && isExamStarted && !isTestSubmitted && !isExamDisqualified) {
+        triggerViolation('Chuyển tab hoặc ẩn trình duyệt');
+      }
+    };
+
+    const handleBlur = () => {
+      if (isExamStarted && !isTestSubmitted && !isExamDisqualified) {
+        triggerViolation('Nhấp ra ngoài màn hình thi');
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [isExamStarted, isTestSubmitted, isExamDisqualified, examStandardMode, baseQuestions, testHistories, examLevel, activePackage]);
+
+  // Standard 120-minute timer effect (40 mins per phase)
+  useEffect(() => {
+    if (examStandardMode !== 'standard120' || !isExamStarted || !isTimerRunning || isTestSubmitted || isExamDisqualified) return;
+
+    const timer = setInterval(() => {
+      setPhaseTimeRemaining((prev) => {
+        if (prev <= 1) {
+          // Auto advance to next phase after 40 mins
+          if (currentPhase === 1) {
+            setSubmittedPhases((p) => ({ ...p, 1: true }));
+            setCurrentPhase(2);
+            return 40 * 60;
+          } else if (currentPhase === 2) {
+            setSubmittedPhases((p) => ({ ...p, 2: true }));
+            setCurrentPhase(3);
+            return 40 * 60;
+          } else {
+            // Choukai time completed -> Final submit
+            clearInterval(timer);
+            handleFinal120Submit();
+            return 0;
+          }
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [examStandardMode, isExamStarted, isTimerRunning, isTestSubmitted, isExamDisqualified, currentPhase]);
+
+  // Enter Full Screen helper
+  const requestFullScreen = async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      } else if ((document.documentElement as any).webkitRequestFullscreen) {
+        await (document.documentElement as any).webkitRequestFullscreen();
+      }
+    } catch (e) {
+      console.warn('Fullscreen request denied:', e);
+    }
+  };
+
+  const handleStartExam120 = async () => {
+    await requestFullScreen();
+    setIsExamStarted(true);
+    setCurrentPhase(1);
+    setPhaseTimeRemaining(40 * 60);
+    setSubmittedPhases({});
+    setViolationCount(0);
+    setIsExamDisqualified(false);
+    setIsTestSubmitted(false);
+    setIsCenterScoreModalOpen(false);
+    setSelectedAnswers({});
+  };
+
+  const handleProceedNextPhase = () => {
+    if (currentPhase === 1) {
+      setSubmittedPhases((p) => ({ ...p, 1: true }));
+      setCurrentPhase(2);
+      setPhaseTimeRemaining(40 * 60);
+      setIsEarlySubmitDialogOpen(false);
+    } else if (currentPhase === 2) {
+      setSubmittedPhases((p) => ({ ...p, 2: true }));
+      setCurrentPhase(3);
+      setPhaseTimeRemaining(40 * 60);
+      setIsEarlySubmitDialogOpen(false);
+    }
+  };
+
+  // Calculate scores per phase (scaled to 40 points each)
+  const calculatePhaseScore = (qList: JLPTQuestion[]) => {
+    if (qList.length === 0) return 0;
+    let correct = 0;
+    qList.forEach((q: JLPTQuestion) => {
+      const sel = selectedAnswers[q.id];
+      const correctOpt = q.options.find((o) => o.isCorrect);
+      if (sel && correctOpt && sel === correctOpt.id) correct++;
+    });
+    return Math.round((correct / qList.length) * 40);
+  };
+
+  const scoreP1 = isExamDisqualified ? 0 : calculatePhaseScore(phase1Questions);
+  const scoreP2 = isExamDisqualified ? 0 : calculatePhaseScore(phase2Questions);
+  const scoreP3 = isExamDisqualified ? 0 : calculatePhaseScore(phase3Questions);
+  const total120Score = isExamDisqualified ? 0 : scoreP1 + scoreP2 + scoreP3;
+
+  const isP1Failed = !isExamDisqualified && scoreP1 < 19;
+  const isP2Failed = !isExamDisqualified && scoreP2 < 19;
+  const isP3Failed = !isExamDisqualified && scoreP3 < 19;
+  const hasFailedSection = isP1Failed || isP2Failed || isP3Failed;
+  const is120Passed = !isExamDisqualified && !hasFailedSection && total120Score >= 60;
+
+  const handleFinal120Submit = () => {
+    setSubmittedPhases({ 1: true, 2: true, 3: true });
+    setIsTestSubmitted(true);
+    setIsCenterScoreModalOpen(true);
+    recordStudyMinutes(120, 'reading');
+
+    const wrongIds: string[] = [];
+    baseQuestions.forEach((q: JLPTQuestion) => {
+      const sel = selectedAnswers[q.id];
+      const correctOpt = q.options.find((o) => o.isCorrect);
+      if (!sel || !correctOpt || sel !== correctOpt.id) {
+        wrongIds.push(q.id);
+      }
+    });
+
+    const newHistory: JLPTTestHistory = {
+      id: 'test-120-' + Date.now(),
+      testTitle: `${activePackage.title} (Thi Chuẩn 120p: ${scoreP1}/40, ${scoreP2}/40, ${scoreP3}/40) - ${is120Passed ? 'ĐỖ' : 'RỚT'}`,
+      level: examLevel,
+      score: total120Score,
+      totalQuestions: 120,
+      date: new Date().toLocaleString('vi-VN'),
+      wrongQuestionIds: wrongIds,
+    };
+
+    const updated = [newHistory, ...testHistories];
+    setTestHistories(updated);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+
+    const newMistakes = Array.from(new Set([...mistakeQuestionIds, ...wrongIds]));
+    setMistakeQuestionIds(newMistakes);
+    localStorage.setItem(MISTAKES_KEY, JSON.stringify(newMistakes));
+  };
 
   // Reset when level or test mode changes
   useEffect(() => {
@@ -250,6 +487,11 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
     const updatedHistories = [newHistory, ...testHistories];
     setTestHistories(updatedHistories);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistories));
+
+    // Record study time spent on the test
+    const timeSpentSeconds = Math.max(60, activePackage.totalTimeMinutes * 60 - timeRemainingSeconds);
+    const timeSpentMinutes = Math.max(2, Math.round(timeSpentSeconds / 60));
+    recordStudyMinutes(timeSpentMinutes, 'reading');
 
     // Update mistake notebook
     const newMistakes = Array.from(new Set([...mistakeQuestionIds, ...wrongIds]));
@@ -442,63 +684,232 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Mode Selector & Timer Bar */}
+        {/* Mode Selector & Standard 120-min Bar */}
         {activeTab === 'test' && (
           <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-semibold mr-1">Chế độ thi:</span>
+              <span className="text-xs text-slate-400 font-semibold mr-1">Hình thức:</span>
               <button
-                onClick={() => setTestMode('full')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  testMode === 'full'
-                    ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
+                onClick={() => {
+                  setExamStandardMode('standard120');
+                  setIsExamStarted(false);
+                  setIsTestSubmitted(false);
+                }}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  examStandardMode === 'standard120'
+                    ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-amber-600/30'
                     : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5 text-amber-400" />
-                <span>Đầy đủ ({activePackage.questions.length} câu)</span>
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-300" />
+                <span>Thi Chuẩn 120 Phút (3 Phần Nghiêm Ngặt)</span>
               </button>
 
               <button
-                onClick={() => setTestMode('quick')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  testMode === 'quick'
+                onClick={() => setExamStandardMode('practice')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  examStandardMode === 'practice'
                     ? 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
                     : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
                 }`}
               >
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
-                <span>Khoan gọn (5 câu nhanh)</span>
+                <span>Luyện Tập Tự Do</span>
               </button>
             </div>
 
             {/* Timer Counter */}
-            <div className="flex items-center gap-3 bg-slate-950/80 px-4 py-1.5 rounded-2xl border border-slate-800">
-              <div className="flex items-center gap-2">
-                <Clock className={`w-4 h-4 ${timeRemainingSeconds < 300 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
-                <span className={`font-mono text-sm font-bold ${timeRemainingSeconds < 300 ? 'text-rose-400' : 'text-white'}`}>
+            {examStandardMode === 'standard120' && isExamStarted && !isTestSubmitted ? (
+              <div className="flex items-center gap-3 bg-slate-950/90 px-4 py-1.5 rounded-2xl border border-amber-500/40 shadow-inner">
+                <div className="flex items-center gap-2">
+                  <Clock className={`w-4 h-4 ${phaseTimeRemaining < 600 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
+                  <span className="text-xs text-amber-300 font-semibold">
+                    Phần {currentPhase}:
+                  </span>
+                  <span className={`font-mono text-base font-bold ${phaseTimeRemaining < 600 ? 'text-rose-400' : 'text-white'}`}>
+                    {formatTimer(phaseTimeRemaining)}
+                  </span>
+                </div>
+
+                {violationCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold">
+                    Cảnh báo vi phạm: {violationCount}/3
+                  </span>
+                )}
+              </div>
+            ) : examStandardMode === 'practice' ? (
+              <div className="flex items-center gap-3 bg-slate-950/80 px-4 py-1.5 rounded-2xl border border-slate-800">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="font-mono text-sm font-bold text-white">
                   {formatTimer(timeRemainingSeconds)}
                 </span>
+                {!isTestSubmitted && (
+                  <button
+                    onClick={() => setIsTimerRunning(!isTimerRunning)}
+                    className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-900 border border-slate-800 cursor-pointer"
+                  >
+                    {isTimerRunning ? 'Tạm dừng' : 'Tiếp tục'}
+                  </button>
+                )}
               </div>
-
-              {!isTestSubmitted && (
-                <button
-                  onClick={() => setIsTimerRunning(!isTimerRunning)}
-                  className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-900 border border-slate-800 cursor-pointer"
-                >
-                  {isTimerRunning ? 'Tạm dừng' : 'Tiếp tục'}
-                </button>
-              )}
-            </div>
+            ) : null}
           </div>
         )}
       </div>
 
+      {/* STANDARD 120-MIN PRE-EXAM LOBBY & RULES AGREEMENT */}
+      {activeTab === 'test' && examStandardMode === 'standard120' && !isExamStarted && !isTestSubmitted && (
+        <div className="bg-slate-900/95 border border-amber-500/30 rounded-3xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mt-10 -mr-10 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="max-w-3xl mx-auto space-y-6">
+            <div className="text-center space-y-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold uppercase tracking-wider">
+                <ShieldAlert className="w-3.5 h-3.5" />
+                Quy Chế Thi JLPT {examLevel} Chuẩn 120 Phút
+              </span>
+              <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                Phòng Thi Mô Phỏng Nghiêm Ngặt
+              </h2>
+              <p className="text-sm text-slate-300">
+                Tuân thủ nghiêm ngặt cấu trúc 3 phần thi, cơ chế điểm liệt và chế độ giám sát toàn màn hình chống gian lận.
+              </p>
+            </div>
+
+            {/* 3 Core Exam Phases Breakdown */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400">PHẦN 1</span>
+                  <span className="text-xs text-slate-400 font-mono">40 Phút</span>
+                </div>
+                <h4 className="text-sm font-bold text-white">Từ Vựng & Kanji</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Tối đa <strong>40 điểm</strong>. Chỉ được nộp sớm khi còn đúng 10 phút. Nộp xong KHÔNG THỂ quay lại.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-cyan-400">PHẦN 2</span>
+                  <span className="text-xs text-slate-400 font-mono">40 Phút</span>
+                </div>
+                <h4 className="text-sm font-bold text-white">Ngữ Pháp & Đọc Hiểu</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Tối đa <strong>40 điểm</strong>. Nộp bài khi còn 10 phút cuối để bước vào phần Nghe hiểu.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-purple-400">PHẦN 3</span>
+                  <span className="text-xs text-slate-400 font-mono">40 Phút</span>
+                </div>
+                <h4 className="text-sm font-bold text-white">Nghe Hiểu (Choukai)</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Tối đa <strong>40 điểm</strong>. <em>Bắt buộc nghe và làm bài đến hết toàn bộ 40 phút</em> (không nộp sớm).
+                </p>
+              </div>
+            </div>
+
+            {/* Critical Rules Notice */}
+            <div className="p-5 rounded-2xl bg-rose-950/30 border border-rose-800/40 space-y-3 text-xs leading-relaxed text-slate-300">
+              <div className="flex items-center gap-2 text-rose-300 font-bold text-sm">
+                <AlertOctagon className="w-4 h-4 text-rose-400" />
+                <span>QUY CHẾ ĐIỂM LIỆT & GIÁM SÁT AN TOÀN THI KHÔNG NHÂN NHƯỢNG:</span>
+              </div>
+              <ul className="list-disc list-inside space-y-1 text-slate-300">
+                <li>
+                  <strong className="text-rose-300">Quy định điểm liệt:</strong> 3 phần mỗi phần 40 điểm (Tổng 120 điểm). <strong>Bất kỳ phần nào dưới 19 điểm là AUTO RỚT</strong>, bất kể tổng điểm cao bao nhiêu.
+                </li>
+                <li>
+                  <strong className="text-emerald-300">Chuẩn đỗ (Goukaku):</strong> Cả 3 phần đều &ge; 19 điểm VÀ tổng điểm đạt &ge; 60 / 120 điểm.
+                </li>
+                <li>
+                  <strong className="text-amber-300">Giám sát toàn màn hình:</strong> Khi bắt đầu thi, hệ thống sẽ mở chế độ Full Screen. Nếu thoát toàn màn hình hoặc chuyển tab sang ứng dụng khác, hệ thống sẽ cảnh báo <strong>tối đa 3 lần</strong>.
+                </li>
+                <li>
+                  <strong className="text-rose-400">Hủy bài thi:</strong> Nếu vi phạm <strong>quá 3 lần</strong>, bài thi sẽ bị hủy bỏ ngay lập tức với thông báo <em>"Bạn đã vi phạm chính sách thi JLPT"</em> và tính <strong>0 ĐIỂM</strong>!
+                </li>
+              </ul>
+            </div>
+
+            {/* Start Button */}
+            <div className="text-center pt-2">
+              <button
+                onClick={handleStartExam120}
+                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-600 hover:from-amber-500 hover:to-orange-500 text-white font-extrabold text-base shadow-xl shadow-amber-600/30 transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2 mx-auto"
+              >
+                <Maximize className="w-5 h-5" />
+                <span>BẮT ĐẦU LÀM BÀI THI CHUẨN 120 PHÚT (VÀO TOÀN MÀN HÌNH)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TAB 1: ACTIVE TEST */}
-      {activeTab === 'test' && (
+      {activeTab === 'test' && (examStandardMode === 'practice' || isExamStarted) && (
         <div className="space-y-6">
-          {/* Section Filter Tabs */}
-          {testMode === 'full' && (
+          {/* Phase Progress Bar in 120-min Standard Mode */}
+          {examStandardMode === 'standard120' && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tiến trình thi:</span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
+                      currentPhase === 1
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : submittedPhases[1]
+                        ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
+                        : 'bg-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {submittedPhases[1] ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                    <span>1. Từ vựng & Kanji ({phase1Questions.length} câu)</span>
+                  </span>
+
+                  <ChevronRight className="w-4 h-4 text-slate-600" />
+
+                  <span
+                    className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
+                      currentPhase === 2
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : submittedPhases[2]
+                        ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
+                        : 'bg-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {submittedPhases[2] ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                    <span>2. Ngữ pháp & Đọc hiểu ({phase2Questions.length} câu)</span>
+                  </span>
+
+                  <ChevronRight className="w-4 h-4 text-slate-600" />
+
+                  <span
+                    className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
+                      currentPhase === 3
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : submittedPhases[3]
+                        ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
+                        : 'bg-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {submittedPhases[3] ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                    <span>3. Nghe hiểu ({phase3Questions.length} câu)</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-400">
+                Thời gian phần {currentPhase}: <strong className="font-mono text-white text-sm">{formatTimer(phaseTimeRemaining)}</strong>
+              </div>
+            </div>
+          )}
+
+          {/* Section Filter Tabs in Practice Mode */}
+          {examStandardMode === 'practice' && testMode === 'full' && (
             <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
               <button
                 onClick={() => setSelectedSection('all')}
@@ -851,7 +1262,7 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
 
           {/* Question List */}
           <div className="space-y-6">
-            {filteredQuestions.map((q, qIndex) => {
+            {(examStandardMode === 'standard120' ? activeQuestions : filteredQuestions).map((q, qIndex) => {
               const selectedOptId = selectedAnswers[q.id];
               const isAnswered = !!selectedOptId;
               const isChokai = q.section === 'listening';
@@ -1151,10 +1562,55 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
           {/* Test Action Sticky Bar */}
           <div className="sticky bottom-6 z-20 bg-slate-900/95 border border-slate-800 rounded-3xl p-5 shadow-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-4">
             <div className="text-xs text-slate-400 font-medium">
-              Đã trả lời: <strong className="text-white font-mono text-sm">{Object.keys(selectedAnswers).length}</strong> / {filteredQuestions.length} câu
+              Đã trả lời:{' '}
+              <strong className="text-white font-mono text-sm">
+                {
+                  Object.keys(selectedAnswers).filter((id) =>
+                    (examStandardMode === 'standard120' ? activeQuestions : filteredQuestions).some((q) => q.id === id)
+                  ).length
+                }
+              </strong>{' '}
+              / {(examStandardMode === 'standard120' ? activeQuestions : filteredQuestions).length} câu{' '}
+              {examStandardMode === 'standard120' && (
+                <span className="text-amber-400 font-bold ml-1">
+                  (Phần {currentPhase}/3 - {currentPhase === 1 ? 'Từ vựng & Kanji' : currentPhase === 2 ? 'Ngữ pháp & Đọc hiểu' : 'Nghe hiểu'})
+                </span>
+              )}
             </div>
 
-            {!isTestSubmitted ? (
+            {examStandardMode === 'standard120' && !isTestSubmitted ? (
+              <div className="flex items-center gap-3">
+                {currentPhase < 3 ? (
+                  phaseTimeRemaining > 600 ? (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-400">
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                      <span>
+                        Chưa đến 10 phút cuối (Mở nộp sau{' '}
+                        <strong className="text-amber-300 font-mono">
+                          {Math.ceil((phaseTimeRemaining - 600) / 60)} phút
+                        </strong>
+                        )
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsEarlySubmitDialogOpen(true)}
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-sm shadow-lg shadow-amber-600/30 cursor-pointer active:scale-95 animate-pulse"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Qua bài & Chuyển sang phần tiếp theo</span>
+                    </button>
+                  )
+                ) : (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-950/60 border border-purple-800/60 text-xs text-purple-200">
+                    <Headphones className="w-4 h-4 text-purple-400 animate-pulse" />
+                    <span>
+                      Phần Nghe hiểu: <strong>Bắt buộc nghe hết 40 phút</strong>. Hệ thống tự động nộp khi hết giờ.
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : !isTestSubmitted ? (
               <button
                 onClick={handleSubmitTest}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-sm shadow-lg shadow-amber-600/30 cursor-pointer active:scale-95"
@@ -1164,19 +1620,22 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
               </button>
             ) : (
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-amber-950/80 px-4 py-2 rounded-2xl border border-amber-700/60">
+                <button
+                  onClick={() => setIsCenterScoreModalOpen(true)}
+                  className="flex items-center gap-2 bg-amber-950/80 hover:bg-amber-900/80 px-4 py-2 rounded-2xl border border-amber-700/60 text-sm font-bold text-white font-mono cursor-pointer transition"
+                >
                   <Award className="w-5 h-5 text-amber-400" />
-                  <span className="text-sm font-bold text-white font-mono">
-                    Điểm số: {calculateScore()} / {filteredQuestions.length}
+                  <span>
+                    Xem Bảng Điểm Trung Tâm ({total120Score}/120)
                   </span>
-                </div>
+                </button>
 
                 <button
-                  onClick={handleResetTest}
+                  onClick={handleStartExam120}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Làm lại đề này</span>
+                  <span>Thi lại đề 120 phút mới</span>
                 </button>
               </div>
             )}
@@ -1294,6 +1753,290 @@ export const JLPTSimulatorModule: React.FC<Props> = ({
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: EARLY SUBMIT CONFIRMATION (CHỈ KHI CÒN 10 PHÚT) */}
+      {isEarlySubmitDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-3xl max-w-md w-full p-6 shadow-2xl text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/40">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-xl font-bold text-white">Bạn có chắc muốn nộp bài không?</h3>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-amber-950/30 p-3 rounded-2xl border border-amber-800/40 text-left">
+              ⚠️ <strong>Lưu ý quan trọng:</strong> Một khi đã xác nhận nộp bài phần{' '}
+              <strong className="text-amber-300">
+                {currentPhase === 1 ? 'Từ vựng & Kanji' : 'Ngữ pháp & Đọc hiểu'}
+              </strong>
+              , bạn <span className="text-rose-400 font-bold uppercase">không thể quay lại</span> làm hoặc sửa bất kỳ câu hỏi nào của phần này mà phải tiếp tục làm phần tiếp theo.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => setIsEarlySubmitDialogOpen(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                Tiếp tục làm bài
+              </button>
+
+              <button
+                onClick={handleProceedNextPhase}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold transition cursor-pointer shadow-lg shadow-amber-600/30"
+              >
+                Xác nhận nộp & Qua bài
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: ANTI-CHEAT WARNING ("Vui lòng quay lại làm bài") */}
+      {isCheatWarningModalOpen && !isExamDisqualified && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-rose-950/90 backdrop-blur-lg animate-fade-in">
+          <div className="bg-slate-900 border-2 border-rose-500 rounded-3xl max-w-lg w-full p-8 shadow-2xl text-center space-y-5">
+            <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border-2 border-rose-500 animate-pulse">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-xs font-mono font-bold uppercase tracking-wider">
+                Cảnh Báo Vi Phạm Lần {violationCount} / 3
+              </span>
+              <h2 className="text-2xl font-extrabold text-white">Vui lòng quay lại làm bài</h2>
+            </div>
+
+            <p className="text-sm text-slate-300 leading-relaxed bg-rose-950/40 p-4 rounded-2xl border border-rose-800/50">
+              Hệ thống phát hiện bạn đã <strong>thoát chế độ toàn màn hình</strong> hoặc <strong>chuyển sang tab khác</strong>. Trong suốt quá trình thi JLPT chuẩn, bạn phải giữ màn hình thi liên tục.
+              <br />
+              <span className="text-rose-400 font-bold block mt-2">
+                ⚠️ NẾU QUÁ 3 LẦN, BÀI THI COI NHƯ HỦY VÀ LẬP TỨC NHẬN 0 ĐIỂM!
+              </span>
+            </p>
+
+            <button
+              onClick={async () => {
+                await requestFullScreen();
+                setIsCheatWarningModalOpen(false);
+              }}
+              className="w-full py-3.5 px-6 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-sm shadow-xl shadow-rose-600/40 transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Maximize className="w-4 h-4" />
+              <span>Quay lại làm bài (Bật lại toàn màn hình)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: EXAM DISQUALIFIED SCREEN ("Bạn đã vi phạm chính sách thi JLPT") */}
+      {isExamDisqualified && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-xl animate-fade-in">
+          <div className="bg-gradient-to-b from-rose-950 via-slate-900 to-black border-2 border-rose-600 rounded-3xl max-w-xl w-full p-8 sm:p-10 shadow-2xl text-center space-y-6">
+            <div className="w-20 h-20 rounded-full bg-rose-600/20 text-rose-500 flex items-center justify-center mx-auto border-2 border-rose-600 animate-bounce">
+              <AlertOctagon className="w-10 h-10" />
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-2xl sm:text-3xl font-black text-rose-500 tracking-tight uppercase">
+                Bạn đã vi phạm chính sách thi JLPT
+              </h1>
+              <p className="text-base text-white font-bold">
+                Bài thi của bạn đã bị HỦY BỎ ngay lập tức!
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-black/60 border border-rose-900/60 text-xs text-slate-300 leading-relaxed text-left space-y-2">
+              <div className="text-rose-400 font-bold">LÝ DO XỬ PHẠT KỶ LUẬT:</div>
+              <p>
+                Thí sinh đã có hành vi thoát toàn màn hình / chuyển tab trái phép <strong>vượt quá 3 lần</strong> trong thời gian làm bài.
+              </p>
+              <div className="pt-2 border-t border-slate-800 text-center text-sm font-mono font-extrabold text-rose-400">
+                KẾT QUẢ: 0 / 120 ĐIỂM (ĂN 0 ĐIỂM - TRƯỢT KỶ LUẬT)
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setIsExamDisqualified(false);
+                  setIsCenterScoreModalOpen(true);
+                }}
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer"
+              >
+                Xem Bảng Điểm 0 Điểm
+              </button>
+
+              <button
+                onClick={handleStartExam120}
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold shadow-lg shadow-rose-600/30 transition cursor-pointer"
+              >
+                Đăng ký thi lại từ đầu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: CENTER SCORE REPORT MODAL (BẢNG ĐIỂM Ở GIỮA MÀN HÌNH - KHÔNG NHÂN NHƯỢNG) */}
+      {isCenterScoreModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative my-8">
+            <button
+              onClick={() => setIsCenterScoreModalOpen(false)}
+              className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="text-center space-y-2 mb-6">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold uppercase tracking-wider">
+                <Award className="w-3.5 h-3.5" />
+                Chứng Chỉ Kết Quả Kỳ Thi JLPT {examLevel} Chuẩn 120 Phút
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                BẢNG ĐIỂM CHÍNH THỨC
+              </h2>
+              <p className="text-xs text-slate-400">
+                {activePackage.title} • Thời gian hoàn tất: {new Date().toLocaleString('vi-VN')}
+              </p>
+            </div>
+
+            {/* Overall Verdict Banner */}
+            <div
+              className={`p-5 rounded-3xl border-2 text-center mb-6 shadow-xl ${
+                isExamDisqualified
+                  ? 'bg-rose-950/60 border-rose-600 text-rose-300'
+                  : is120Passed
+                  ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300'
+                  : 'bg-rose-950/60 border-rose-500 text-rose-300'
+              }`}
+            >
+              <div className="text-xs uppercase font-extrabold tracking-widest mb-1">
+                KẾT QUẢ CHUNG CUỘC
+              </div>
+              <div className="text-3xl sm:text-4xl font-black tracking-tight font-japanese mb-2">
+                {isExamDisqualified ? (
+                  <span className="text-rose-500">HỦY BÀI THI (0 ĐIỂM)</span>
+                ) : is120Passed ? (
+                  <span className="text-emerald-400">合格 (ĐẠT YÊU CẦU - ĐỖ JLPT)</span>
+                ) : (
+                  <span className="text-rose-400">不合格 (KHÔNG ĐẠT / RỚT)</span>
+                )}
+              </div>
+
+              <p className="text-xs font-medium max-w-lg mx-auto leading-relaxed">
+                {isExamDisqualified ? (
+                  'Thí sinh bị kỷ luật hủy bài do vi phạm quy chế toàn màn hình / chuyển tab quá 3 lần.'
+                ) : hasFailedSection ? (
+                  <span className="text-rose-300 font-bold">
+                    ⚠️ AUTO RỚT DO BỊ ĐIỂM LIỆT: Có ít nhất 1 phần thi dưới 19 điểm! (3 phần mỗi phần 40 điểm không nhân nhượng).
+                  </span>
+                ) : total120Score < 60 ? (
+                  <span className="text-rose-300 font-bold">
+                    ⚠️ RỚT DO KHÔNG ĐỦ ĐIỂM SÀN: Tổng điểm đạt {total120Score}/120 điểm (yêu cầu tối thiểu &ge; 60 điểm).
+                  </span>
+                ) : (
+                  <span className="text-emerald-300 font-bold">
+                    🎉 XUẤT SẮC: Bạn đã vượt qua tất cả chuẩn điểm liệt (&ge; 19 điểm mỗi phần) và đạt chuẩn điểm sàn JLPT!
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {/* 3 Sections Detailed Score Breakdown (40 pts each) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+              {/* Part 1: Từ vựng & Kanji */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-center">
+                <div className="text-xs text-slate-400 font-bold">PHẦN 1: TỪ VỰNG & KANJI</div>
+                <div className="text-2xl font-mono font-black text-amber-400">
+                  {scoreP1} <span className="text-xs text-slate-400 font-normal">/ 40</span>
+                </div>
+                <div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                      isP1Failed
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    }`}
+                  >
+                    {isP1Failed ? 'ĐIỂM LIỆT (< 19)' : 'ĐẠT CHUẨN'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Part 2: Ngữ pháp & Đọc hiểu */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-center">
+                <div className="text-xs text-slate-400 font-bold">PHẦN 2: NGỮ PHÁP & ĐỌC HIỂU</div>
+                <div className="text-2xl font-mono font-black text-cyan-400">
+                  {scoreP2} <span className="text-xs text-slate-400 font-normal">/ 40</span>
+                </div>
+                <div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                      isP2Failed
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    }`}
+                  >
+                    {isP2Failed ? 'ĐIỂM LIỆT (< 19)' : 'ĐẠT CHUẨN'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Part 3: Nghe hiểu */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-center">
+                <div className="text-xs text-slate-400 font-bold">PHẦN 3: NGHE HIỂU (CHOUKAI)</div>
+                <div className="text-2xl font-mono font-black text-purple-400">
+                  {scoreP3} <span className="text-xs text-slate-400 font-normal">/ 40</span>
+                </div>
+                <div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                      isP3Failed
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    }`}
+                  >
+                    {isP3Failed ? 'ĐIỂM LIỆT (< 19)' : 'ĐẠT CHUẨN'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Grand Total */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between mb-6">
+              <div>
+                <span className="text-xs text-slate-400 font-semibold block">TỔNG ĐIỂM CHUẨN 3 PHẦN:</span>
+                <span className="text-xs text-slate-500">Chuẩn đỗ tổng thể: &ge; 60 / 120 điểm</span>
+              </div>
+              <div className="text-right">
+                <span className="text-3xl font-mono font-black text-white">
+                  {total120Score}
+                </span>
+                <span className="text-slate-400 text-sm font-semibold font-mono"> / 120</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <button
+                onClick={() => setIsCenterScoreModalOpen(false)}
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition cursor-pointer"
+              >
+                Xem lại bài làm & Giải thích bẫy
+              </button>
+
+              <button
+                onClick={handleStartExam120}
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-extrabold shadow-lg shadow-amber-600/30 transition cursor-pointer"
+              >
+                Làm lại đề thi chuẩn 120 phút mới
+              </button>
+            </div>
           </div>
         </div>
       )}

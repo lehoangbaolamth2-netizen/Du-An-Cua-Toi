@@ -337,148 +337,13 @@ export const LISTENING_LESSON_PRESETS: ListeningLesson[] = [
   }
 ];
 
-export const FLASHCARD_PRESETS: Flashcard[] = [
-  {
-    id: 'card-1',
-    level: 'N3',
-    kanji: '把握',
-    hanViet: 'BÁ ÁC',
-    hiragana: 'はあく',
-    romaji: 'Haaku',
-    mnemonic: {
-      story: 'Tay (扌 - Thủ) CẦM chắc chiếc Lông chim (羽 - Vũ) thì đã BẮT (把握) trọn được bản chất vấn đề.',
-      visualDescription: 'Bàn tay nắm chặt lấy chiếc chìa khóa để thấu suốt toàn cảnh.',
-      emoji: '🖐️🔍'
-    },
-    pitchAccent: {
-      pattern: 'Heiban (平板 - 0)',
-      pitchGraph: 'L-H-H-H (Ha-a-ku)',
-      accentMora: 0
-    },
-    definition: 'Nắm vững, hiểu thấu suốt bản chất tình hình hoặc thông tin chi tiết.',
-    examples: {
-      lifeExample: {
-        jp: '新しいプロジェクトの現状を正確に把握しておこう。',
-        vi: 'Hãy nắm bắt thật chính xác hiện trạng của dự án mới nhé.',
-        context: 'Giao tiếp hàng ngày trong công việc văn phòng.'
-      },
-      jlptExample: {
-        jp: '筆者の主張を的確に把握することが、読解問題で高得点を取る鍵である。',
-        vi: 'Nắm bắt chính xác chủ trương của tác giả là chìa khóa để đạt điểm cao bài đọc hiểu JLPT.',
-        examTip: 'Từ này cực kỳ hay xuất hiện trong câu hỏi phần Đọc hiểu Dokkai JLPT N2/N3!'
-      }
-    },
-    collocations: [
-      '現状を把握する (Nắm bắt hiện trạng)',
-      '状況を把握する (Hiểu rõ tình hình)',
-      '実態を把握する (Nắm bắt thực tế)'
-    ],
-    synonyms: ['理解 (Rikai - Hiểu)', 'つかむ (Tsukamu - Nắm lấy)'],
-    antonyms: ['見落とし (Miotoshi - Bỏ sót)', '無知 (Muchi - Vô tri)'],
-    srs: {
-      repetitions: 2,
-      interval: 4,
-      easeFactor: 2.5,
-      dueDate: new Date(Date.now() - 3600000).toISOString(), // due now
-      lastReviewed: new Date(Date.now() - 86400000 * 3).toISOString(),
-      state: 'review'
-    }
-  },
-  {
-    id: 'card-2',
-    level: 'N2',
-    kanji: '曖昧',
-    hanViet: 'ÁI MUỘI',
-    hiragana: 'あいまい',
-    romaji: 'Aimai',
-    mnemonic: {
-      story: 'Mặt trời (日) bị che khuất thì trời TỐI MỜ (曖), Cây cối (木) trong đêm thì MỜ MỊT (昧) -> Mơ hồ, mập mờ.',
-      visualDescription: 'Một biển sương mù bao quanh ngã ba đường không biết đi lối nào.',
-      emoji: '🌫️❓'
-    },
-    pitchAccent: {
-      pattern: 'Heiban (平板 - 0)',
-      pitchGraph: 'L-H-H-H (A-i-ma-i)',
-      accentMora: 0
-    },
-    definition: 'Mập mờ, mơ hồ, không rõ ràng dứt khoát (Tính từ đuôi な).',
-    examples: {
-      lifeExample: {
-        jp: '彼の返事はいつも曖昧で、行くのか行かないのか分からない。',
-        vi: 'Câu trả lời của anh ấy lúc nào cũng mập mờ, chẳng biết có đi hay không.',
-        context: 'Nhận xét về tính cách hoặc lời nói hàng ngày.'
-      },
-      jlptExample: {
-        jp: '契約書に曖昧な表現を残しておくと、後でトラブルの原因になりかねない。',
-        vi: 'Nếu để lại những cách diễn đạt mập mờ trong hợp đồng thì rất có thể sẽ trở thành nguồn cơn tranh chấp sau này.',
-        examTip: 'Thường đi với ngữ pháp N2: ~になりかねない (có nguy cơ dẫn tới hậu quả xấu).'
-      }
-    },
-    collocations: [
-      '曖昧な態度 (Thái độ mập mờ nước đôi)',
-      '曖昧な返事 (Câu trả lời không dứt khoát)',
-      '曖昧にする (Làm cho qua chuyện, đánh trống lảng)'
-    ],
-    synonyms: ['不明瞭 (Fumeiryou - Không rõ ràng)', 'うやむや (Uyamuya - Mập mờ)'],
-    antonyms: ['明確 (Meikaku - Rõ ràng minh bạch)', 'はっきり (Hakkiri - Rõ rệt)'],
-    srs: {
-      repetitions: 1,
-      interval: 1,
-      easeFactor: 2.4,
-      dueDate: new Date(Date.now() - 7200000).toISOString(),
-      lastReviewed: new Date(Date.now() - 86400000).toISOString(),
-      state: 'learning'
-    }
-  },
-  {
-    id: 'card-3',
-    level: 'N1',
-    kanji: '妥協',
-    hanViet: 'THỎA HIỆP',
-    hiragana: 'だきょう',
-    romaji: 'Dakyou',
-    mnemonic: {
-      story: 'Người phụ nữ (女) nâng niu bàn tay (爪) để ĐỒNG LÒNG (妥), hiệp lực (協) cùng 3 chữ Thập -> Cùng nhượng bộ để đạt THỎA HIỆP.',
-      visualDescription: 'Hai bên đàm phán bắt tay nhau sau khi mỗi bên bớt một bước.',
-      emoji: '🤝⚖️'
-    },
-    pitchAccent: {
-      pattern: 'Heiban (平板 - 0)',
-      pitchGraph: 'L-H-H (Da-kyo-u)',
-      accentMora: 0
-    },
-    definition: 'Thỏa hiệp, nhượng bộ lẫn nhau để đạt được giải pháp chung.',
-    examples: {
-      lifeExample: {
-        jp: '品質に関しては、絶対に妥協したくありません。',
-        vi: 'Về mặt chất lượng thì tôi tuyệt đối không bao giờ muốn thỏa hiệp.',
-        context: 'Tuyên ngôn về sự tỉ mỉ, chuẩn mực cao của nghệ nhân / kỹ sư.'
-      },
-      jlptExample: {
-        jp: '双方が歩み寄り、粘り強い交渉の末にようやく妥協点を見出した。',
-        vi: 'Hai bên cùng nhượng bộ, sau quá trình đàm phán kiên trì cuối cùng cũng tìm ra điểm thỏa hiệp.',
-        examTip: 'Đi kèm cụm từ cao cấp N1: 妥協点を見出す (Tìm thấy điểm dung hòa/thỏa hiệp).'
-      }
-    },
-    collocations: [
-      '妥協を許さない (Không khoan nhượng / Không chấp nhận thỏa hiệp)',
-      '妥協案 (Phương án thỏa hiệp)',
-      '妥協点を見出す (Tìm điểm thỏa hiệp)'
-    ],
-    synonyms: ['譲歩 (Jouho - Nhượng bộ)', '歩み寄り (Ayumiyori - Xích lại gần nhau)'],
-    antonyms: ['強硬 (Kyoukou - Cứng rắn ngoan cố)', '対立 (Tairitsu - Đối đầu)'],
-    srs: {
-      repetitions: 0,
-      interval: 1,
-      easeFactor: 2.5,
-      dueDate: new Date().toISOString(),
-      state: 'new'
-    }
-  }
-];
+import { FLASHCARD_PRESETS } from './flashcards';
+import { COMPREHENSIVE_GRAMMAR_PRESETS } from './grammarData';
+export { FLASHCARD_PRESETS };
 
-export const GRAMMAR_PRESETS: GrammarItem[] = [
-  // MINNA NO NIHONGO SƠ CẤP (N5 / N4)
+const RAW_GRAMMAR_PRESETS: GrammarItem[] = [
+  ...COMPREHENSIVE_GRAMMAR_PRESETS,
+  // MINNA NO NIHONGO SƠ CẤP (N5 / N4) - Bổ sung
   {
     id: 'gram-minna-1',
     level: 'N5',
@@ -924,6 +789,10 @@ export const GRAMMAR_PRESETS: GrammarItem[] = [
     ]
   }
 ];
+
+export const GRAMMAR_PRESETS: GrammarItem[] = Array.from(
+  new Map(RAW_GRAMMAR_PRESETS.map((item) => [item.id, item])).values()
+);
 
 export const JLPT_QUESTION_PRESETS: { level: string; questions: JLPTQuestion[] }[] = [
   {

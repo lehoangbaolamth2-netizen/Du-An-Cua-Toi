@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   Mic2,
   Headphones,
@@ -8,16 +9,22 @@ import {
   FileText,
   Sparkles,
   Flame,
-  Globe
+  Globe,
+  BarChart3,
+  Shield,
+  User,
+  LogIn
 } from 'lucide-react';
 
 export type ActiveTab =
+  | 'dashboard'
   | 'pitch'
   | 'listening'
   | 'flashcards'
   | 'grammar'
   | 'jlpt'
-  | 'dokkai';
+  | 'dokkai'
+  | 'admin';
 
 interface Props {
   activeTab: ActiveTab;
@@ -26,6 +33,8 @@ interface Props {
   setCurrentLevel: (level: string) => void;
   dueCardsCount: number;
   onOpenAiAnalyzer: () => void;
+  onOpenProfile: () => void;
+  onOpenLogin: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -35,10 +44,19 @@ export const Navbar: React.FC<Props> = ({
   setCurrentLevel,
   dueCardsCount,
   onOpenAiAnalyzer,
+  onOpenProfile,
+  onOpenLogin,
 }) => {
+  const { user, isAdmin, isSuperAdmin, isAuthenticated } = useAuth();
   const levels = ['ALL', 'N5', 'N4', 'N3', 'N2', 'N1'];
 
   const navItems = [
+    {
+      id: 'dashboard' as ActiveTab,
+      label: 'Thống Kê Tiến Độ',
+      icon: BarChart3,
+      color: 'text-emerald-400',
+    },
     { id: 'pitch' as ActiveTab, label: 'Phản Xạ & Pitch', icon: Mic2, color: 'text-indigo-400' },
     { id: 'listening' as ActiveTab, label: 'Luyện Nghe 3 Bước', icon: Headphones, color: 'text-cyan-400' },
     {
@@ -52,6 +70,16 @@ export const Navbar: React.FC<Props> = ({
     { id: 'jlpt' as ActiveTab, label: 'Luyện Đề JLPT', icon: Award, color: 'text-amber-400' },
     { id: 'dokkai' as ActiveTab, label: 'Đọc Hiểu Dokkai', icon: FileText, color: 'text-blue-400' },
   ];
+
+  // RBAC Server-Verified: only show Admin tab if user has admin/superadmin role
+  if (isAdmin) {
+    navItems.push({
+      id: 'admin' as ActiveTab,
+      label: 'Khu Vực Quản Trị',
+      icon: Shield,
+      color: 'text-amber-400',
+    });
+  }
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800">
@@ -69,16 +97,16 @@ export const Navbar: React.FC<Props> = ({
                   NihonGo <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-300 to-cyan-400">Reflex</span>
                 </h1>
                 <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  SRS & JLPT
+                  RBAC & JLPT
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium hidden sm:block">
-                Hệ Thống Luyện Phản Xạ Pitch Accent • Trí Nhớ Dài Hạn • Giải Đề JLPT
+                Hệ Thống Luyện Phản Xạ Pitch Accent • Trí Nhớ Dài Hạn • Quản Trị RBAC
               </p>
             </div>
           </div>
 
-          {/* Right Controls: Level Selector & AI Engine Button */}
+          {/* Right Controls: Level Selector, AI Button, User Profile */}
           <div className="flex items-center gap-3">
             {/* JLPT Level Selector */}
             <div className="flex items-center bg-slate-900 border border-slate-800 rounded-2xl p-1">
@@ -106,6 +134,43 @@ export const Navbar: React.FC<Props> = ({
               <span className="hidden sm:inline">Phân tích AI</span>
               <span className="sm:hidden">AI</span>
             </button>
+
+            {/* User Account / Google Sign-In Button */}
+            {isAuthenticated && user ? (
+              <button
+                onClick={onOpenProfile}
+                className="flex items-center gap-2 p-1 pl-2.5 pr-2 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition cursor-pointer group"
+                title="Xem và chỉnh sửa hồ sơ cá nhân"
+              >
+                <div className="text-left hidden md:block">
+                  <div className="text-[11px] font-bold text-white group-hover:text-indigo-300 transition leading-tight">
+                    {user.name.split(' ')[0]}
+                  </div>
+                  <div className="text-[9px] font-mono text-slate-400 uppercase">
+                    {isSuperAdmin ? 'CHỦ QUẢN' : user.role}
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <img
+                    src={user.avatar_url}
+                    alt={user.name}
+                    className="w-7 h-7 rounded-xl object-cover border border-slate-700"
+                  />
+                  {isAdmin && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-slate-900" />
+                  )}
+                </div>
+              </button>
+            ) : (
+              <button
+                onClick={onOpenLogin}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-md transition cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Đăng nhập Google</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -145,3 +210,4 @@ export const Navbar: React.FC<Props> = ({
     </header>
   );
 };
+
