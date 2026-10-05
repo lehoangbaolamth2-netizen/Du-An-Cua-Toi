@@ -8,11 +8,22 @@ export interface AuthenticatedRequest extends Request {
 
 export function extractBearerToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
-  const parts = authHeader.split(' ');
-  if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
-    return parts[1];
+  if (authHeader) {
+    const parts = authHeader.split(' ');
+    if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
+      return parts[1];
+    }
   }
+
+  // Also extract from cookie if present
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)nihongo_session=([^;]+)/);
+    if (match && match[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  }
+
   return null;
 }
 

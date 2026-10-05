@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import crypto from 'crypto';
 import { db, DbUser } from './db.js';
 import { AuthenticatedRequest, requireAuth, requireAdmin, requireSuperAdmin, extractBearerToken } from './authMiddleware.js';
 
@@ -35,6 +36,159 @@ apiRouter.get('/health', (req, res) => {
 // ==========================================
 // 1. AUTHENTICATION (GOOGLE LOGIN & SESSIONS)
 // ==========================================
+
+/**
+ * Public Auth Config endpoint:
+ * Allows frontend to dynamically fetch Client ID from server env if not bundled at build time
+ */
+apiRouter.get('/auth/config', (req, res) => {
+  const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  return res.status(200).json({
+    clientId,
+    authConfigured: Boolean(clientId),
+  });
+});
+
+/**
+ * Initiate Official Google OAuth 2.0 Web Authorization with prompt=select_account
+ * User is always shown the Google Account Chooser
+ */
+apiRouter.get('/auth/google/start', (req, res) => {
+  const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  if (!clientId) {
+    console.error('[AUTH_ERROR] Cannot start Google OAuth: GOOGLE_CLIENT_ID is not configured in environment.');
+    return res.redirect('/?auth_error=missing_client_id');
+  }
+
+  const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+  const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || 'localhost:3000';
+  const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+
+  const state = crypto.randomBytes(16).toString('hex');
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', clientId);
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('scope', 'openid email profile');
+  authUrl.searchParams.set('prompt', 'select_account'); // CRITICAL: Forces Google account chooser!
+  authUrl.searchParams.set('access_type', 'offline');
+  authUrl.searchParams.set('state', state);
+
+  console.log('[AUTH] Redirecting to Google OAuth Account Chooser:', authUrl.toString());
+  return res.redirect(authUrl.toString());
+});
+
+/**
+ * Official Google OAuth 2.0 Callback Route (/api/auth/google/callback)
+ */
+apiRouter.get('/auth/google/callback', async (req, res) => {
+  const { code, error } = req.query;
+
+  if (error || !code) {
+    console.warn('[AUTH_CALLBACK] OAuth authorization error or cancellation from Google:', error);
+    return res.redirect('/?auth_error=' + encodeURIComponent(String(error || 'cancelled')));
+  }
+
+  const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+  const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+  const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || 'localhost:3000';
+  const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+
+  try {
+    const tokenParams = new URLSearchParams({
+      code: String(code),
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    });
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+      body: tokenParams.toString(),
+    });
+
+    if (!tokenRes.ok) {
+      const errBody = await tokenRes.text();
+      console.error('[AUTH_CALLBACK] Code exchange error with Google:', tokenRes.status, errBody);
+      return res.redirect('/?auth_error=code_exchange_failed');
+    }
+
+    const tokenData = await tokenRes.json();
+    let sub = '';
+    let email = '';
+    let name = '';
+    let picture = '';
+
+    if (tokenData.id_token) {
+      const verified = await verifyGoogleIdToken(tokenData.id_token);
+      if (verified && verified.sub) {
+        sub = verified.sub;
+        email = verified.email;
+        name = verified.name;
+        picture = verified.picture;
+      }
+    }
+
+    if (!sub && tokenData.access_token) {
+      const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: 'application/json' },
+      });
+      if (userinfoRes.ok) {
+        const uInfo = await userinfoRes.json();
+        sub = uInfo.sub;
+        email = uInfo.email;
+        name = uInfo.name;
+        picture = uInfo.picture;
+      }
+    }
+
+    if (!sub) {
+      console.error('[AUTH_CALLBACK] Could not resolve Google identity claims from response.');
+      return res.redirect('/?auth_error=identity_resolution_failed');
+    }
+
+    const { user, isNew } = db.upsertGoogleUser({
+      google_sub: sub,
+      email: email || `${sub}@user.nihongoreflex.internal`,
+      name: name || 'Người học Nhật ngữ',
+      avatar_url: picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    });
+
+    const ip = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const sessionToken = db.createSession(user, ip, userAgent);
+
+    db.addAuditLog({
+      admin_id: user.id,
+      admin_email: user.email,
+      action: isNew ? 'USER_REGISTER_GOOGLE' : 'USER_LOGIN_GOOGLE',
+      target_type: 'user',
+      target_id: user.id,
+      target_name: `${user.name} (${user.email})`,
+      reason: 'Đăng nhập thành công qua Google OAuth 2.0 Web Callback (prompt=select_account)',
+      ip,
+      device: userAgent,
+      result: 'SUCCESS',
+    });
+
+    const isSecure = protocol === 'https';
+    res.cookie('nihongo_session', sessionToken, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 3600 * 1000,
+    });
+
+    return res.redirect(`/?auth=success&token=${sessionToken}`);
+  } catch (err: any) {
+    console.error('[AUTH_CALLBACK] Exception in callback route:', err);
+    return res.redirect('/?auth_error=server_exception');
+  }
+});
 
 /**
  * Helper to decode Google JWT payload without external library dependencies
@@ -116,14 +270,37 @@ apiRouter.post('/auth/google', async (req, res) => {
 
     console.log(`[AUTH_DEBUG] POST /api/auth/google received from origin: ${origin}, ip: ${ip}`);
 
-    const { credential, google_sub, email, name, avatar_url } = req.body;
+    const { credential, access_token, google_sub, email, name, avatar_url } = req.body;
 
     let resolvedSub = '';
     let resolvedEmail = '';
     let resolvedName = '';
     let resolvedPicture = '';
 
-    if (credential && typeof credential === 'string') {
+    // 1. If access_token provided (from Google OAuth Token Client with prompt=select_account)
+    if (access_token && typeof access_token === 'string') {
+      try {
+        console.log('[AUTH_DEBUG] Verifying access_token with Google userinfo...');
+        const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${access_token}`, Accept: 'application/json' },
+        });
+        if (userinfoRes.ok) {
+          const uInfo = await userinfoRes.json();
+          resolvedSub = uInfo.sub;
+          resolvedEmail = uInfo.email || '';
+          resolvedName = uInfo.name || '';
+          resolvedPicture = uInfo.picture || '';
+          console.log('[AUTH_DEBUG] Userinfo verified successfully. Sub:', resolvedSub, 'Email:', resolvedEmail);
+        } else {
+          console.warn('[AUTH_DEBUG] Google userinfo returned HTTP', userinfoRes.status);
+        }
+      } catch (e) {
+        console.error('[AUTH_DEBUG] Exception checking access_token with Google userinfo:', e);
+      }
+    }
+
+    // 2. If credential provided (from Google ID Token)
+    if (!resolvedSub && credential && typeof credential === 'string') {
       console.log('[AUTH_DEBUG] Verifying credential from request body...');
       const verified = await verifyGoogleIdToken(credential);
       if (verified && verified.sub) {
@@ -134,7 +311,7 @@ apiRouter.post('/auth/google', async (req, res) => {
       }
     }
 
-    // Direct payload support (for development or fallback)
+    // 3. Direct payload support (for development or fallback)
     if (!resolvedSub && google_sub) {
       console.log('[AUTH_DEBUG] Using direct google_sub payload:', google_sub);
       resolvedSub = String(google_sub).trim();
@@ -147,7 +324,7 @@ apiRouter.post('/auth/google', async (req, res) => {
       console.warn('[AUTH_DEBUG] No valid sub found in request body.');
       return res.status(400).json({
         error: 'INVALID_CREDENTIALS',
-        message: 'Không tìm thấy định danh Google ID Token hoặc google_sub hợp lệ. Vui lòng kiểm tra Client ID và cấu hình Google Console.'
+        message: 'Không thể xác thực danh tính Google. Vui lòng thử lại.'
       });
     }
 
@@ -189,6 +366,16 @@ apiRouter.post('/auth/google', async (req, res) => {
       ip,
       device: userAgent,
       result: 'SUCCESS',
+    });
+
+    // Set secure HttpOnly session cookie
+    const isSecure = (req.headers['x-forwarded-proto'] as string) === 'https' || req.protocol === 'https';
+    res.cookie('nihongo_session', token, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 3600 * 1000,
     });
 
     return res.status(200).json({
@@ -248,6 +435,7 @@ apiRouter.post('/auth/logout', (req, res) => {
   if (token) {
     db.removeSession(token);
   }
+  res.clearCookie('nihongo_session', { path: '/' });
   return res.status(200).json({ success: true, message: 'Đăng xuất an toàn thành công.' });
 });
 

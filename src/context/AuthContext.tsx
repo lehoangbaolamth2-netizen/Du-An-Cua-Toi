@@ -10,6 +10,7 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   loginWithGoogle: (payload: {
     credential?: string;
+    access_token?: string;
     google_sub?: string;
     email?: string;
     name?: string;
@@ -87,15 +88,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   // Load user on startup if token exists
-  const fetchCurrentUser = async (authToken: string) => {
+  const fetchCurrentUser = async (authToken?: string | null) => {
     const url = getApiUrl('/api/auth/me');
     try {
       console.log('[AuthContext] Fetching current user session from:', url);
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-          'Accept': 'application/json',
-        },
+        headers,
+        credentials: 'include',
       });
 
       const parsed = await parseJsonResponse(res, 'fetchCurrentUser');
@@ -144,18 +150,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Safe storage access
     }
 
-    const validToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
-    if (validToken) {
-      fetchCurrentUser(validToken);
+    // 2. Check if returned from Google OAuth redirect callback with token in query param
+    let initialToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+      const authError = urlParams.get('auth_error');
+
+      if (urlToken) {
+        localStorage.setItem(TOKEN_KEY, urlToken);
+        setToken(urlToken);
+        initialToken = urlToken;
+        // Clean URL cleanly
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (authError) {
+        console.warn('[AuthContext] Returned from OAuth callback with error:', authError);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+
+    if (initialToken) {
+      fetchCurrentUser(initialToken);
     } else {
-      // STRICT REQUIREMENT: No auto-login! User must remain null until authenticating.
-      setUser(null);
-      setIsLoading(false);
+      // Check if session exists in HttpOnly cookie
+      fetchCurrentUser(null);
     }
   }, []);
 
   const loginWithGoogle = async (payload: {
     credential?: string;
+    access_token?: string;
     google_sub?: string;
     email?: string;
     name?: string;
@@ -168,6 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('Target API Endpoint:', targetUrl);
     console.log('Payload Details:', {
       hasCredential: Boolean(payload.credential),
+      hasAccessToken: Boolean(payload.access_token),
       google_sub: payload.google_sub || '(Will extract from credential)',
       email: payload.email || '(Will extract from credential)',
       name: payload.name || '(Will extract from credential)',
@@ -180,6 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -226,18 +252,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    if (token) {
-      try {
-        await fetch(getApiUrl('/api/auth/logout'), {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Accept': 'application/json',
-          },
-        });
-      } catch (e) {
-        // Ignore network errors on logout
+    try {
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
+      await fetch(getApiUrl('/api/auth/logout'), {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+      });
+    } catch (e) {
+      // Ignore network errors on logout
     }
     // Deep cleanse all local traces, session storage, and mock keys
     try {
