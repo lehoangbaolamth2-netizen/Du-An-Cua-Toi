@@ -10,11 +10,25 @@ export const apiRouter = Router();
 apiRouter.get('/health', (req, res) => {
   return res.status(200).json({
     status: 'ok',
-    message: 'NihonGo Reflex API Routes are operational',
+    message: 'NihonGo Reflex API Gateway đang hoạt động chuẩn xác!',
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'production',
-    isVercel: Boolean(process.env.VERCEL),
-    hasGoogleClientId: Boolean(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID),
+    environment: process.env.NODE_ENV || 'production',
+    vercel: Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME),
+    configCheck: {
+      hasGoogleClientId: Boolean(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID),
+      hasGoogleClientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+      hasGeminiApiKey: Boolean(process.env.GEMINI_API_KEY),
+      initialAdminEmailConfigured: Boolean(process.env.INITIAL_ADMIN_EMAIL),
+    },
+    databaseStatus: {
+      usersCount: db.getUsers().length,
+      isLoaded: true,
+    },
+    clientInfo: {
+      ip: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
+      origin: req.headers.origin || 'unknown',
+      host: req.headers.host || 'unknown',
+    }
   });
 });
 

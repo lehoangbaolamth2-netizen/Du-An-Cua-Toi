@@ -90,143 +90,14 @@ const DB_DIR = isVercelEnvironment
   : path.resolve(__dirname, '..', 'data_server');
 const DB_FILE = path.join(DB_DIR, 'db.json');
 
-// Initial Superadmin email configured from environment or default
-const ADMIN_DEFAULT_EMAIL = process.env.INITIAL_ADMIN_EMAIL || 'lehoangbaolamth2@gmail.com';
-const ADMIN_DEFAULT_SUB = process.env.INITIAL_ADMIN_GOOGLE_SUB || '109823485720194857201';
+// Initial Superadmin email configured from environment or default (empty if not configured)
+const ADMIN_DEFAULT_EMAIL = (process.env.INITIAL_ADMIN_EMAIL || '').trim();
+const ADMIN_DEFAULT_SUB = (process.env.INITIAL_ADMIN_GOOGLE_SUB || '').trim();
 
 const INITIAL_DATA: DatabaseSchema = {
-  users: [
-    {
-      id: 'usr_superadmin_001',
-      google_sub: ADMIN_DEFAULT_SUB,
-      email: ADMIN_DEFAULT_EMAIL,
-      name: 'Lê Hoàng Bảo Lâm (Chủ Quản)',
-      avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      google_avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      avatar_source: 'google',
-      role: 'superadmin',
-      status: 'active',
-      created_at: '2026-01-01T00:00:00.000Z',
-      last_login_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      target_level: 'N1',
-      total_study_minutes: 4200,
-      completed_lessons: 145,
-    },
-    {
-      id: 'usr_sample_002',
-      google_sub: '108293847561928374651',
-      email: 'nguyenvana@gmail.com',
-      name: 'Nguyễn Văn An',
-      avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      google_avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      avatar_source: 'google',
-      role: 'user',
-      status: 'active',
-      created_at: '2026-02-15T08:30:00.000Z',
-      last_login_at: '2026-10-03T14:20:00.000Z',
-      updated_at: '2026-10-03T14:20:00.000Z',
-      target_level: 'N3',
-      total_study_minutes: 840,
-      completed_lessons: 28,
-    },
-    {
-      id: 'usr_sample_003',
-      google_sub: '107384950293847561029',
-      email: 'tranthimai@gmail.com',
-      name: 'Trần Thị Mai',
-      avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-      google_avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-      avatar_source: 'custom',
-      role: 'user',
-      status: 'active',
-      created_at: '2026-03-10T09:15:00.000Z',
-      last_login_at: '2026-10-04T02:10:00.000Z',
-      updated_at: '2026-10-04T02:10:00.000Z',
-      target_level: 'N2',
-      total_study_minutes: 1250,
-      completed_lessons: 46,
-    },
-    {
-      id: 'usr_sample_004',
-      google_sub: '106293847581928374902',
-      email: 'phamhoanglong@gmail.com',
-      name: 'Phạm Hoàng Long',
-      avatar_url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
-      google_avatar_url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
-      avatar_source: 'google',
-      role: 'user',
-      status: 'suspended',
-      created_at: '2026-04-01T11:00:00.000Z',
-      last_login_at: '2026-09-20T18:45:00.000Z',
-      updated_at: '2026-09-22T08:00:00.000Z',
-      target_level: 'N4',
-      total_study_minutes: 320,
-      completed_lessons: 12,
-    },
-    {
-      id: 'usr_sample_005',
-      google_sub: '105192837465019283746',
-      email: 'lequocbao.sensei@gmail.com',
-      name: 'Lê Quốc Bảo (Trợ Lý Giảng Viên)',
-      avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      google_avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      avatar_source: 'google',
-      role: 'admin',
-      status: 'active',
-      created_at: '2026-01-20T10:00:00.000Z',
-      last_login_at: '2026-10-04T05:30:00.000Z',
-      updated_at: '2026-10-04T05:30:00.000Z',
-      target_level: 'N1',
-      total_study_minutes: 3100,
-      completed_lessons: 110,
-    }
-  ],
+  users: [],
   sessions: [],
-  audit_logs: [
-    {
-      id: 'aud_seed_001',
-      admin_id: 'usr_superadmin_001',
-      admin_email: ADMIN_DEFAULT_EMAIL,
-      action: 'SUSPEND_USER',
-      target_type: 'user',
-      target_id: 'usr_sample_004',
-      target_name: 'Phạm Hoàng Long (phamhoanglong@gmail.com)',
-      reason: 'Spam bình luận không phù hợp và vi phạm điều khoản sử dụng',
-      ip: '14.162.145.22',
-      device: 'Chrome 128 / macOS Sequoia',
-      result: 'SUCCESS',
-      timestamp: '2026-09-22T08:00:00.000Z'
-    },
-    {
-      id: 'aud_seed_002',
-      admin_id: 'usr_superadmin_001',
-      admin_email: ADMIN_DEFAULT_EMAIL,
-      action: 'CHANGE_ROLE',
-      target_type: 'user',
-      target_id: 'usr_sample_005',
-      target_name: 'Lê Quốc Bảo (lequocbao.sensei@gmail.com)',
-      reason: 'Bổ nhiệm vai trò Quản Trị Viên biên soạn nội dung bài học N2-N1',
-      ip: '14.162.145.22',
-      device: 'Chrome 128 / macOS Sequoia',
-      result: 'SUCCESS',
-      timestamp: '2026-08-15T10:30:00.000Z'
-    },
-    {
-      id: 'aud_seed_003',
-      admin_id: 'usr_superadmin_001',
-      admin_email: ADMIN_DEFAULT_EMAIL,
-      action: 'UPDATE_SYSTEM_SETTINGS',
-      target_type: 'settings',
-      target_id: 'sys_settings',
-      target_name: 'Giới hạn API & Tối ưu AI Studio',
-      reason: 'Tăng mức trần truy vấn phân tích ngữ điệu Pitch Accent cho người học',
-      ip: '14.162.145.22',
-      device: 'Chrome 128 / macOS Sequoia',
-      result: 'SUCCESS',
-      timestamp: '2026-10-01T15:00:00.000Z'
-    }
-  ],
+  audit_logs: [],
   contents: [
     {
       id: 'cnt_001',
@@ -235,7 +106,7 @@ const INITIAL_DATA: DatabaseSchema = {
       title: 'Mẫu 〜てください (Yêu cầu lịch sự nhẹ nhàng)',
       summary: 'Khởi đầu mẫu câu chỉ dẫn và nhờ vả chuẩn mực trong giao tiếp sơ cấp',
       status: 'published',
-      created_by: 'usr_superadmin_001',
+      created_by: 'system_sensei',
       created_at: '2026-01-10T00:00:00.000Z',
       updated_at: '2026-01-10T00:00:00.000Z',
     },
@@ -246,7 +117,7 @@ const INITIAL_DATA: DatabaseSchema = {
       title: 'Mẫu 〜てしまう / 〜ちゃう (Tiếc nuối & Hoàn tất triệt để)',
       summary: 'Biểu thị sự việc lỡ xảy ra ngoài ý muốn hoặc hoàn thành trọn vẹn',
       status: 'published',
-      created_by: 'usr_superadmin_001',
+      created_by: 'system_sensei',
       created_at: '2026-01-15T00:00:00.000Z',
       updated_at: '2026-01-15T00:00:00.000Z',
     },
@@ -257,7 +128,7 @@ const INITIAL_DATA: DatabaseSchema = {
       title: 'Mẫu 〜わけではない (Phủ định một phần / Không hẳn là)',
       summary: 'Giải tỏa hiểu lầm tinh tế, không cực đoan trong đàm thoại đời thường',
       status: 'published',
-      created_by: 'usr_superadmin_001',
+      created_by: 'system_sensei',
       created_at: '2026-02-01T00:00:00.000Z',
       updated_at: '2026-02-01T00:00:00.000Z',
     },
@@ -268,7 +139,7 @@ const INITIAL_DATA: DatabaseSchema = {
       title: 'Mẫu 〜ざるを得ない (Đành phải làm dù lòng không muốn)',
       summary: 'Tâm thức miễn cưỡng trước tình thế éo le và nghịch cảnh công việc',
       status: 'published',
-      created_by: 'usr_superadmin_001',
+      created_by: 'system_sensei',
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-01T00:00:00.000Z',
     },
@@ -279,7 +150,7 @@ const INITIAL_DATA: DatabaseSchema = {
       title: 'Mẫu 〜を余儀なくされる (Bị dồn vào chân tường bởi biến cố lớn)',
       summary: 'Văn phong chính luận trang trọng bậc nhất dành cho báo chí và văn kiện',
       status: 'published',
-      created_by: 'usr_superadmin_001',
+      created_by: 'system_sensei',
       created_at: '2026-03-15T00:00:00.000Z',
       updated_at: '2026-03-15T00:00:00.000Z',
     }
@@ -290,7 +161,7 @@ const INITIAL_DATA: DatabaseSchema = {
     max_daily_ai_requests: 50,
     allow_guest_preview: true,
     app_name: 'NihonGo Reflex - Hệ Thống JLPT & RBAC Mastery',
-    support_email: 'lehoangbaolamth2@gmail.com',
+    support_email: process.env.SUPPORT_EMAIL || 'support@nihongoreflex.internal',
     updated_at: new Date().toISOString(),
   }
 };
@@ -319,8 +190,17 @@ class DatabaseManager {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
 
-        // Ensure backward compatibility: populate google_avatar_url & avatar_source if missing
+        // Clean out any legacy mock accounts with old hardcoded emails or IDs
         if (Array.isArray(parsed.users)) {
+          parsed.users = parsed.users.filter((u: DbUser) => {
+            const emailLower = (u.email || '').toLowerCase();
+            const subStr = u.google_sub || '';
+            const isOldMock = emailLower.includes('lehoangbaolamth2@gmail.com') ||
+                              subStr === '109823485720194857201' ||
+                              u.id === 'usr_superadmin_001';
+            return !isOldMock;
+          });
+
           parsed.users.forEach((u: DbUser) => {
             if (!u.google_avatar_url) {
               u.google_avatar_url = u.avatar_url;
@@ -331,20 +211,16 @@ class DatabaseManager {
           });
         }
 
-        // Ensure initial superadmin exists
-        const adminIndex = parsed.users.findIndex(
-          (u: DbUser) => u.email.toLowerCase() === ADMIN_DEFAULT_EMAIL.toLowerCase() || u.google_sub === ADMIN_DEFAULT_SUB
-        );
-        if (adminIndex === -1) {
-          parsed.users.unshift(INITIAL_DATA.users[0]);
-          this.saveDatabase(parsed);
-        } else {
-          // Always ensure the owner has superadmin role
-          if (parsed.users[adminIndex].role !== 'superadmin') {
+        // If an initial admin email is specified in environment variables, ensure that account has superadmin role
+        if (ADMIN_DEFAULT_EMAIL && Array.isArray(parsed.users)) {
+          const adminIndex = parsed.users.findIndex(
+            (u: DbUser) => u.email.toLowerCase() === ADMIN_DEFAULT_EMAIL.toLowerCase() || (ADMIN_DEFAULT_SUB && u.google_sub === ADMIN_DEFAULT_SUB)
+          );
+          if (adminIndex !== -1 && parsed.users[adminIndex].role !== 'superadmin') {
             parsed.users[adminIndex].role = 'superadmin';
-            this.saveDatabase(parsed);
           }
         }
+        this.saveDatabase(parsed);
         return parsed;
       }
     } catch (err) {
@@ -389,11 +265,14 @@ class DatabaseManager {
     avatar_url: string;
   }): { user: DbUser; isNew: boolean } {
     const existingIndex = this.data.users.findIndex(
-      (u) => u.google_sub === userData.google_sub || u.email.toLowerCase() === userData.email.toLowerCase()
+      (u) => u.google_sub === userData.google_sub || (userData.email && u.email.toLowerCase() === userData.email.toLowerCase())
     );
 
     const now = new Date().toISOString();
-    const isOwnerEmail = userData.email.toLowerCase() === ADMIN_DEFAULT_EMAIL.toLowerCase();
+    const isOwnerEmail = Boolean(
+      (ADMIN_DEFAULT_EMAIL && userData.email.toLowerCase() === ADMIN_DEFAULT_EMAIL.toLowerCase()) ||
+      (ADMIN_DEFAULT_SUB && userData.google_sub === ADMIN_DEFAULT_SUB)
+    );
 
     if (existingIndex !== -1) {
       const existing = this.data.users[existingIndex];

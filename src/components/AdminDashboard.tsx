@@ -1085,8 +1085,8 @@ export const AdminDashboard: React.FC = () => {
                 <div className="text-cyan-300">VITE_GOOGLE_CLIENT_ID = "xxx.apps.googleusercontent.com" (Frontend)</div>
                 <div className="text-cyan-300">GOOGLE_CLIENT_ID = "xxx.apps.googleusercontent.com" (Backend)</div>
                 <div className="text-cyan-300">GOOGLE_CLIENT_SECRET = "GOCSPX-xxx"</div>
-                <div className="text-cyan-300">INITIAL_ADMIN_EMAIL = "lehoangbaolamth2@gmail.com"</div>
-                <div className="text-cyan-300">INITIAL_ADMIN_GOOGLE_SUB = "109823485720194857201"</div>
+                <div className="text-cyan-300">INITIAL_ADMIN_EMAIL = "email-admin-cua-ban@gmail.com"</div>
+                <div className="text-cyan-300">INITIAL_ADMIN_GOOGLE_SUB = "google-sub-id-cua-ban"</div>
                 <div className="text-cyan-300">GEMINI_API_KEY = "AIzaSy..."</div>
               </div>
 

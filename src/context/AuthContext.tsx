@@ -24,7 +24,6 @@ interface AuthContextType {
   }) => Promise<boolean>;
   revertToGoogleAvatar: () => Promise<boolean>;
   refreshUser: () => Promise<void>;
-  switchAccountPreset: (presetType: 'admin' | 'user' | 'assistant') => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -102,7 +101,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const parsed = await parseJsonResponse(res, 'fetchCurrentUser');
 
       if (res.ok && parsed.isJson && parsed.data?.user) {
-        setUser(parsed.data.user);
+        const fetchedUser = parsed.data.user;
+        // Safety guard: Reject any legacy mock user data
+        if (
+          fetchedUser.email?.toLowerCase().includes('lehoangbaolamth2@gmail.com') ||
+          fetchedUser.google_sub === '109823485720194857201' ||
+          fetchedUser.id === 'usr_superadmin_001'
+        ) {
+          console.warn('[AuthContext] Detected legacy mock user session. Purging cache.');
+          localStorage.removeItem(TOKEN_KEY);
+          sessionStorage.clear();
+          setToken(null);
+          setUser(null);
+          return;
+        }
+
+        setUser(fetchedUser);
       } else {
         console.warn('[AuthContext] Session invalid or expired:', parsed.errorText || res.status);
         localStorage.removeItem(TOKEN_KEY);
@@ -111,17 +125,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err) {
       console.error('[AuthContext] Network error while fetching user session:', err);
+      // In case of network error, do not leave fake logged in state
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (token) {
-      fetchCurrentUser(token);
+    // 1. Cleansing check: wipe any old mock tokens or traces
+    try {
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+      if (storedToken && (storedToken.includes('mock_') || storedToken.includes('usr_superadmin_001'))) {
+        localStorage.removeItem(TOKEN_KEY);
+        sessionStorage.clear();
+      }
+    } catch (e) {
+      // Safe storage access
+    }
+
+    const validToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+    if (validToken) {
+      fetchCurrentUser(validToken);
     } else {
-      // By default for rich exploration, we can auto-login the owner/admin account if no token
-      switchAccountPreset('admin');
+      // STRICT REQUIREMENT: No auto-login! User must remain null until authenticating.
+      setUser(null);
+      setIsLoading(false);
     }
   }, []);
 
@@ -210,7 +239,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Ignore network errors on logout
       }
     }
-    localStorage.removeItem(TOKEN_KEY);
+    // Deep cleanse all local traces, session storage, and mock keys
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem('nihongo_session_token_v1');
+      localStorage.removeItem('nihongo_user_profile');
+      sessionStorage.clear();
+    } catch (e) {
+      console.warn('[AuthContext] Storage clearance exception:', e);
+    }
     setToken(null);
     setUser(null);
   };
@@ -274,32 +311,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Helper for quick testing of RBAC differences
-  const switchAccountPreset = async (presetType: 'admin' | 'user' | 'assistant') => {
-    if (presetType === 'admin') {
-      await loginWithGoogle({
-        google_sub: '109823485720194857201',
-        email: 'lehoangbaolamth2@gmail.com',
-        name: 'Lê Hoàng Bảo Lâm (Chủ Quản)',
-        avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      });
-    } else if (presetType === 'assistant') {
-      await loginWithGoogle({
-        google_sub: '105192837465019283746',
-        email: 'lequocbao.sensei@gmail.com',
-        name: 'Lê Quốc Bảo (Trợ Lý Giảng Viên)',
-        avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      });
-    } else {
-      await loginWithGoogle({
-        google_sub: '108293847561928374651',
-        email: 'nguyenvana@gmail.com',
-        name: 'Nguyễn Văn An (Người Học)',
-        avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      });
-    }
-  };
-
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
   const isSuperAdmin = user?.role === 'superadmin';
   const isAuthenticated = Boolean(user && user.status === 'active');
@@ -318,7 +329,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateProfile,
         revertToGoogleAvatar,
         refreshUser,
-        switchAccountPreset,
       }}
     >
       {children}

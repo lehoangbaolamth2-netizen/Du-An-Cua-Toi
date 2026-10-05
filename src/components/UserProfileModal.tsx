@@ -19,12 +19,14 @@ import {
   RotateCcw,
   Image as ImageIcon,
   Check,
-  AlertCircle
+  AlertCircle,
+  LogIn
 } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  onOpenLogin?: () => void;
 }
 
 // Bộ sưu tập avatar phong cách Nhật Bản & Học tập tuyển chọn
@@ -61,7 +63,7 @@ const JAPAN_AVATAR_PRESETS = [
   },
 ];
 
-export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose }) => {
+export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose, onOpenLogin }) => {
   const {
     user,
     isAdmin,
@@ -69,7 +71,6 @@ export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose }) => {
     logout,
     updateProfile,
     revertToGoogleAvatar,
-    switchAccountPreset
   } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -193,8 +194,66 @@ export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   };
 
-  const isCurrentAvatarGoogle = user?.avatar_source === 'google' || !user?.avatar_source;
-  const originalGoogleAvatar = user?.google_avatar_url || user?.avatar_url;
+  // Unauthenticated / Not Logged In View
+  if (!user) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-6 shadow-2xl relative animate-scaleUp text-center my-8">
+          <button
+            onClick={onClose}
+            className="absolute top-5 right-5 text-slate-400 hover:text-white p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="w-16 h-16 mx-auto rounded-3xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center text-slate-400 shadow-inner">
+            <User className="w-8 h-8 text-slate-400" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="inline-block px-3 py-1 rounded-full bg-slate-800 text-slate-300 text-xs font-bold border border-slate-700">
+              Trạng thái: Chưa đăng nhập
+            </span>
+            <h3 className="text-xl font-extrabold text-white">Hồ Sơ Cá Nhân</h3>
+            <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
+              Bạn hiện chưa đăng nhập vào hệ thống. Vui lòng đăng nhập bằng tài khoản Google để đồng bộ hồ sơ, tùy chọn ảnh đại diện riêng và lưu giữ tiến độ học tập.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-indigo-950/20 border border-indigo-900/40 text-[11px] text-slate-400 flex items-start gap-2.5 text-left">
+            <Lock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              Hệ thống xác thực qua chuẩn Google OAuth 2.0 an toàn. Tuyệt đối không lưu trữ hoặc can thiệp mật khẩu Google cá nhân của người học.
+            </p>
+          </div>
+
+          <div className="pt-2 flex flex-col gap-2">
+            {onOpenLogin && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenLogin();
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Đăng nhập bằng Google ngay</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition cursor-pointer"
+            >
+              Đóng cửa sổ
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isCurrentAvatarGoogle = user.avatar_source === 'google' || !user.avatar_source;
+  const originalGoogleAvatar = user.google_avatar_url || user.avatar_url;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
@@ -391,27 +450,6 @@ export const UserProfileModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <p className="text-slate-400 leading-relaxed">
                   Ứng dụng xác thực độc quyền qua chuẩn Google OAuth 2.0 an toàn. Hệ thống và Quản trị viên không bao giờ biết hay lưu mật khẩu Google cá nhân của bạn.
                 </p>
-              </div>
-            </div>
-
-            {/* Quick Demo Switcher */}
-            <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800/80 space-y-2">
-              <span className="text-[11px] font-bold text-slate-400 block">
-                🧪 Thử Nghiệm Nhanh Cơ Chế Phân Quyền (RBAC Test Demo):
-              </span>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => switchAccountPreset('admin')}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold cursor-pointer transition"
-                >
-                  Đăng nhập Quyền Admin
-                </button>
-                <button
-                  onClick={() => switchAccountPreset('user')}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold cursor-pointer transition"
-                >
-                  Đăng nhập Quyền User thường
-                </button>
               </div>
             </div>
 

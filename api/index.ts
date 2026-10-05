@@ -31,7 +31,7 @@ const handleHealth = (req: Request, res: Response) => {
       hasGoogleClientId: Boolean(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID),
       hasGoogleClientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
       hasGeminiApiKey: Boolean(process.env.GEMINI_API_KEY),
-      initialAdminEmail: process.env.INITIAL_ADMIN_EMAIL || 'lehoangbaolamth2@gmail.com',
+      initialAdminEmailConfigured: Boolean(process.env.INITIAL_ADMIN_EMAIL),
     },
     databaseStatus: {
       usersCount: db.getUsers().length,

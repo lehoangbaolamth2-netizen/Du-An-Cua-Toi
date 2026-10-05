@@ -167,7 +167,7 @@ function AppContent() {
           />
         )}
 
-        {activeTab === 'admin' && (
+        {activeTab === 'admin' && isAdmin && (
           <AdminDashboard />
         )}
       </main>
@@ -186,6 +186,10 @@ function AppContent() {
       <UserProfileModal
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
+        onOpenLogin={() => {
+          setIsProfileOpen(false);
+          setIsLoginOpen(true);
+        }}
       />
 
       {/* Google Login Modal */}
