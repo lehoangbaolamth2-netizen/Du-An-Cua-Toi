@@ -31,6 +31,51 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'nihongo_session_token_v1';
 
+/**
+ * Dynamic API URL resolver:
+ * Ensures requests adapt dynamically to Vercel production domain, preview branches, or localhost.
+ */
+export const getApiUrl = (endpoint: string): string => {
+  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+    return endpoint;
+  }
+  const customBase = (import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return customBase ? `${customBase}${cleanEndpoint}` : cleanEndpoint;
+};
+
+/**
+ * Safe JSON parser helper to prevent cryptic syntax errors when Vercel returns HTML 404/500
+ */
+async function parseJsonResponse(res: Response, contextLabel: string): Promise<{
+  isJson: boolean;
+  data: any;
+  errorText: string | null;
+}> {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const rawText = await res.text();
+    console.error(`[AUTH_CLIENT_ERROR] ${contextLabel}: Expected JSON but received content-type "${contentType}" (HTTP ${res.status}):`, rawText.slice(0, 300));
+    return {
+      isJson: false,
+      data: null,
+      errorText: `Máy chủ phản hồi mã HTTP ${res.status} (${res.statusText || 'Lỗi kết nối'}). Định dạng trả về là HTML thay vì JSON (thường do Vercel chưa nhận diện Serverless Function /api).`,
+    };
+  }
+
+  try {
+    const data = await res.json();
+    return { isJson: true, data, errorText: null };
+  } catch (err: any) {
+    console.error(`[AUTH_CLIENT_ERROR] ${contextLabel}: JSON parsing exception:`, err);
+    return {
+      isJson: false,
+      data: null,
+      errorText: `Lỗi đọc dữ liệu phản hồi từ máy chủ: ${err?.message || 'Invalid JSON'}`,
+    };
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
@@ -44,24 +89,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load user on startup if token exists
   const fetchCurrentUser = async (authToken: string) => {
+    const url = getApiUrl('/api/auth/me');
     try {
-      const res = await fetch('/api/auth/me', {
+      console.log('[AuthContext] Fetching current user session from:', url);
+      const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${authToken}`,
+          'Accept': 'application/json',
         },
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
+      const parsed = await parseJsonResponse(res, 'fetchCurrentUser');
+
+      if (res.ok && parsed.isJson && parsed.data?.user) {
+        setUser(parsed.data.user);
       } else {
-        // Invalid or expired token
+        console.warn('[AuthContext] Session invalid or expired:', parsed.errorText || res.status);
         localStorage.removeItem(TOKEN_KEY);
         setToken(null);
         setUser(null);
       }
     } catch (err) {
-      console.error('Failed to fetch user:', err);
+      console.error('[AuthContext] Network error while fetching user session:', err);
     } finally {
       setIsLoading(false);
     }
@@ -84,43 +133,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     avatar_url?: string;
   }) => {
     setIsLoading(true);
+    const targetUrl = getApiUrl('/api/auth/google');
+
+    console.group('[AuthContext:loginWithGoogle]');
+    console.log('Target API Endpoint:', targetUrl);
+    console.log('Payload Details:', {
+      hasCredential: Boolean(payload.credential),
+      google_sub: payload.google_sub || '(Will extract from credential)',
+      email: payload.email || '(Will extract from credential)',
+      name: payload.name || '(Will extract from credential)',
+    });
+
     try {
-      const res = await fetch('/api/auth/google', {
+      const res = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      console.log('Response HTTP Status:', res.status, res.statusText);
+
+      const parsed = await parseJsonResponse(res, 'loginWithGoogle');
+
+      if (!parsed.isJson) {
+        console.error('Non-JSON response received:', parsed.errorText);
+        console.groupEnd();
+        setIsLoading(false);
+        return {
+          success: false,
+          message: parsed.errorText || 'Không thể kết nối máy chủ xác thực. Kiểm tra lại Vercel API routing.',
+        };
+      }
+
+      const data = parsed.data;
+      console.log('Response Payload:', data);
+      console.groupEnd();
+
       if (res.ok && data.token && data.user) {
         localStorage.setItem(TOKEN_KEY, data.token);
         setToken(data.token);
         setUser(data.user);
         setIsLoading(false);
-        return { success: true, message: data.message };
+        return { success: true, message: data.message || 'Đăng nhập thành công!' };
       } else {
         setIsLoading(false);
-        return { success: false, message: data.message || 'Đăng nhập thất bại.' };
+        return {
+          success: false,
+          message: data.message || data.error || `Xác thực thất bại (HTTP ${res.status}).`,
+        };
       }
-    } catch (err) {
+    } catch (err: any) {
+      console.error('[AuthContext:loginWithGoogle] Fatal Network Exception:', err);
+      console.groupEnd();
       setIsLoading(false);
-      return { success: false, message: 'Lỗi kết nối máy chủ xác thực.' };
+      return {
+        success: false,
+        message: `Lỗi kết nối máy chủ xác thực: ${err?.message || 'Network request failed'}. Vui lòng kiểm tra kết nối mạng và Vercel status.`,
+      };
     }
   };
 
   const logout = async () => {
     if (token) {
       try {
-        await fetch('/api/auth/logout', {
+        await fetch(getApiUrl('/api/auth/logout'), {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
+            'Accept': 'application/json',
           },
         });
       } catch (e) {
-        // Ignore
+        // Ignore network errors on logout
       }
     }
     localStorage.removeItem(TOKEN_KEY);
@@ -136,22 +223,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }) => {
     if (!token) return false;
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await fetch(getApiUrl('/api/user/profile'), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'Accept': 'application/json',
         },
         body: JSON.stringify(data),
       });
 
-      if (res.ok) {
-        const resData = await res.json();
-        setUser(resData.user);
+      const parsed = await parseJsonResponse(res, 'updateProfile');
+      if (res.ok && parsed.isJson && parsed.data?.user) {
+        setUser(parsed.data.user);
         return true;
       }
       return false;
     } catch (e) {
+      console.error('[AuthContext] Error updating profile:', e);
       return false;
     }
   };
@@ -159,20 +248,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const revertToGoogleAvatar = async () => {
     if (!token) return false;
     try {
-      const res = await fetch('/api/user/avatar/revert-google', {
+      const res = await fetch(getApiUrl('/api/user/avatar/revert-google'), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
+          'Accept': 'application/json',
         },
       });
 
-      if (res.ok) {
-        const resData = await res.json();
-        setUser(resData.user);
+      const parsed = await parseJsonResponse(res, 'revertToGoogleAvatar');
+      if (res.ok && parsed.isJson && parsed.data?.user) {
+        setUser(parsed.data.user);
         return true;
       }
       return false;
     } catch (e) {
+      console.error('[AuthContext] Error reverting to Google avatar:', e);
       return false;
     }
   };

@@ -5,6 +5,20 @@ import { AuthenticatedRequest, requireAuth, requireAdmin, requireSuperAdmin, ext
 export const apiRouter = Router();
 
 // ==========================================
+// 0. HEALTH CHECK (FOR VERCEL & GATEWAY MONITORING)
+// ==========================================
+apiRouter.get('/health', (req, res) => {
+  return res.status(200).json({
+    status: 'ok',
+    message: 'NihonGo Reflex API Routes are operational',
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'production',
+    isVercel: Boolean(process.env.VERCEL),
+    hasGoogleClientId: Boolean(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID),
+  });
+});
+
+// ==========================================
 // 1. AUTHENTICATION (GOOGLE LOGIN & SESSIONS)
 // ==========================================
 
@@ -14,12 +28,16 @@ export const apiRouter = Router();
 function decodeJwtPayload(jwt: string): any {
   try {
     const parts = jwt.split('.');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {
+      console.warn('[AUTH_DEBUG] JWT does not have 3 parts, length:', parts.length);
+      return null;
+    }
     const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
     return JSON.parse(jsonPayload);
   } catch (e) {
+    console.error('[AUTH_DEBUG] Failed to decode JWT payload:', e);
     return null;
   }
 }
@@ -33,6 +51,8 @@ async function verifyGoogleIdToken(idToken: string): Promise<{
   name: string;
   picture: string;
 } | null> {
+  console.log('[AUTH_DEBUG] Starting Google ID Token verification, token prefix:', idToken.slice(0, 15) + '...');
+
   try {
     // 1. Attempt official Google TokenInfo verification
     const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, {
@@ -41,6 +61,7 @@ async function verifyGoogleIdToken(idToken: string): Promise<{
 
     if (tokenInfoRes.ok) {
       const data = await tokenInfoRes.json();
+      console.log('[AUTH_DEBUG] Google TokenInfo verification SUCCESS. Sub:', data.sub, 'Email:', data.email);
       if (data && data.sub) {
         return {
           sub: data.sub,
@@ -49,14 +70,18 @@ async function verifyGoogleIdToken(idToken: string): Promise<{
           picture: data.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
         };
       }
+    } else {
+      const errText = await tokenInfoRes.text();
+      console.warn(`[AUTH_DEBUG] Google TokenInfo returned HTTP ${tokenInfoRes.status}:`, errText);
     }
   } catch (err) {
-    console.warn('Network call to Google tokeninfo endpoint failed, falling back to local JWT decode:', err);
+    console.warn('[AUTH_DEBUG] Network call to Google tokeninfo endpoint failed, falling back to local JWT decode:', err);
   }
 
   // 2. Fallback: Parse claims directly if offline or in preview sandbox
   const claims = decodeJwtPayload(idToken);
   if (claims && claims.sub) {
+    console.log('[AUTH_DEBUG] Fallback local JWT decode successful. Sub:', claims.sub, 'Email:', claims.email);
     return {
       sub: claims.sub,
       email: claims.email || '',
@@ -65,14 +90,19 @@ async function verifyGoogleIdToken(idToken: string): Promise<{
     };
   }
 
+  console.error('[AUTH_DEBUG] All verification methods failed for Google ID Token.');
   return null;
 }
 
 apiRouter.post('/auth/google', async (req, res) => {
   try {
-    const { credential, google_sub, email, name, avatar_url } = req.body;
+    const origin = req.headers.origin || req.headers.host || 'unknown';
     const ip = req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1';
     const userAgent = req.headers['user-agent'] || 'Unknown';
+
+    console.log(`[AUTH_DEBUG] POST /api/auth/google received from origin: ${origin}, ip: ${ip}`);
+
+    const { credential, google_sub, email, name, avatar_url } = req.body;
 
     let resolvedSub = '';
     let resolvedEmail = '';
@@ -80,6 +110,7 @@ apiRouter.post('/auth/google', async (req, res) => {
     let resolvedPicture = '';
 
     if (credential && typeof credential === 'string') {
+      console.log('[AUTH_DEBUG] Verifying credential from request body...');
       const verified = await verifyGoogleIdToken(credential);
       if (verified && verified.sub) {
         resolvedSub = verified.sub;
@@ -91,6 +122,7 @@ apiRouter.post('/auth/google', async (req, res) => {
 
     // Direct payload support (for development or fallback)
     if (!resolvedSub && google_sub) {
+      console.log('[AUTH_DEBUG] Using direct google_sub payload:', google_sub);
       resolvedSub = String(google_sub).trim();
       resolvedEmail = String(email || '').trim();
       resolvedName = String(name || '').trim();
@@ -98,9 +130,10 @@ apiRouter.post('/auth/google', async (req, res) => {
     }
 
     if (!resolvedSub) {
+      console.warn('[AUTH_DEBUG] No valid sub found in request body.');
       return res.status(400).json({
         error: 'INVALID_CREDENTIALS',
-        message: 'Không tìm thấy định danh Google ID Token hoặc google_sub hợp lệ.'
+        message: 'Không tìm thấy định danh Google ID Token hoặc google_sub hợp lệ. Vui lòng kiểm tra Client ID và cấu hình Google Console.'
       });
     }
 

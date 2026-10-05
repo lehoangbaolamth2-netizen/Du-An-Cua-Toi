@@ -84,7 +84,10 @@ interface DatabaseSchema {
   settings: DbSystemSettings;
 }
 
-const DB_DIR = path.resolve(__dirname, '..', 'data_server');
+const isVercelEnvironment = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
+const DB_DIR = isVercelEnvironment
+  ? path.join('/tmp', 'nihongo_data')
+  : path.resolve(__dirname, '..', 'data_server');
 const DB_FILE = path.join(DB_DIR, 'db.json');
 
 // Initial Superadmin email configured from environment or default
@@ -301,8 +304,12 @@ class DatabaseManager {
   }
 
   private ensureDirectory() {
-    if (!fs.existsSync(DB_DIR)) {
-      fs.mkdirSync(DB_DIR, { recursive: true });
+    try {
+      if (!fs.existsSync(DB_DIR)) {
+        fs.mkdirSync(DB_DIR, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('[DB_INIT] Directory creation warning in serverless environment:', err);
     }
   }
 
@@ -341,7 +348,7 @@ class DatabaseManager {
         return parsed;
       }
     } catch (err) {
-      console.error('Error loading db file, reinitializing default:', err);
+      console.warn('[DB_LOAD] Notice loading file, starting with default seeded database:', err);
     }
 
     this.saveDatabase(INITIAL_DATA);
@@ -354,7 +361,7 @@ class DatabaseManager {
       const content = JSON.stringify(dataToSave || this.data, null, 2);
       fs.writeFileSync(DB_FILE, content, 'utf-8');
     } catch (err) {
-      console.error('Error saving db file:', err);
+      console.warn('[DB_SAVE] Persistent disk write notice (normal on serverless read-only functions, data kept in memory):', err);
     }
   }
 

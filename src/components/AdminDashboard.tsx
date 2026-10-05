@@ -1074,17 +1074,20 @@ export const AdminDashboard: React.FC = () => {
                 <div className="text-amber-400 font-bold font-sans">1. Cấu hình Google Cloud Console (OAuth 2.0 Client IDs):</div>
                 <div>Authorized JavaScript origins:</div>
                 <div className="text-emerald-400 pl-4">• http://localhost:3000 (Development)</div>
-                <div className="text-emerald-400 pl-4">• https://your-app.vercel.app (Production)</div>
+                <div className="text-emerald-400 pl-4">• https://ten-app-cua-ban.vercel.app (Production Vercel)</div>
                 <div>Authorized redirect URIs:</div>
-                <div className="text-emerald-400 pl-4">• https://your-app.vercel.app/api/auth/google</div>
+                <div className="text-emerald-400 pl-4">• https://ten-app-cua-ban.vercel.app/api/auth/callback/google</div>
+                <div className="text-emerald-400 pl-4">• https://ten-app-cua-ban.vercel.app</div>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-950 font-mono text-[11px] text-slate-300 border border-slate-800 space-y-2">
                 <div className="text-amber-400 font-bold font-sans">2. Cấu hình biến môi trường trên Vercel Project Settings:</div>
-                <div className="text-cyan-300">GOOGLE_CLIENT_ID = "xxx.apps.googleusercontent.com"</div>
+                <div className="text-cyan-300">VITE_GOOGLE_CLIENT_ID = "xxx.apps.googleusercontent.com" (Frontend)</div>
+                <div className="text-cyan-300">GOOGLE_CLIENT_ID = "xxx.apps.googleusercontent.com" (Backend)</div>
                 <div className="text-cyan-300">GOOGLE_CLIENT_SECRET = "GOCSPX-xxx"</div>
-                <div className="text-cyan-300">AUTH_SECRET = "32_ky_tu_ngau_nhien_ma_hoa"</div>
                 <div className="text-cyan-300">INITIAL_ADMIN_EMAIL = "lehoangbaolamth2@gmail.com"</div>
+                <div className="text-cyan-300">INITIAL_ADMIN_GOOGLE_SUB = "109823485720194857201"</div>
+                <div className="text-cyan-300">GEMINI_API_KEY = "AIzaSy..."</div>
               </div>
 
               <div className="p-3 bg-indigo-950/40 border border-indigo-800/40 rounded-xl text-indigo-200">
