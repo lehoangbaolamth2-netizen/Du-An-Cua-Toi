@@ -50,19 +50,106 @@ apiRouter.get('/auth/config', (req, res) => {
 });
 
 /**
+ * Helper to render graceful callback HTML preventing white screen in popups and full page redirects
+ */
+function sendAuthCallbackResponse(res: Response, success: boolean, token?: string, errorReason?: string) {
+  if (errorReason) {
+    console.error('[AUTH_CALLBACK_ERROR] Detailed failure reason:', errorReason);
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${success ? 'Đăng nhập thành công' : 'Đăng nhập Google'}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #020617;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .card {
+      text-align: center;
+      max-width: 360px;
+      width: 100%;
+      padding: 32px 24px;
+      border-radius: 24px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .spinner {
+      border: 3px solid #1e293b;
+      border-top: 3px solid #4f46e5;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .msg { font-size: 14px; font-weight: 500; color: #94a3b8; margin: 0; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <p class="msg">${success ? 'Đăng nhập thành công! Đang chuyển hướng vào ứng dụng...' : 'Đang chuyển hướng về trang đăng nhập...'}</p>
+  </div>
+  <script>
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(${JSON.stringify(
+          success
+            ? { type: 'GOOGLE_AUTH_SUCCESS', token }
+            : { type: 'GOOGLE_AUTH_ERROR', error: 'google_auth_failed' }
+        )}, '*');
+        setTimeout(function() {
+          try { window.close(); } catch (e) {}
+        }, 300);
+      } else {
+        window.location.replace(${JSON.stringify(
+          success ? `/?auth=success&token=${token}` : '/login?error=google_auth_failed'
+        )});
+      }
+    } catch (e) {
+      window.location.replace(${JSON.stringify(
+        success ? `/?auth=success&token=${token}` : '/login?error=google_auth_failed'
+      )});
+    }
+  </script>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.status(200).send(html);
+}
+
+/**
  * Initiate Official Google OAuth 2.0 Web Authorization with prompt=select_account
  * User is always shown the Google Account Chooser
  */
 apiRouter.get('/auth/google/start', (req, res) => {
   const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
-  if (!clientId) {
-    console.error('[AUTH_ERROR] Cannot start Google OAuth: GOOGLE_CLIENT_ID is not configured in environment.');
-    return res.redirect('/?auth_error=missing_client_id');
-  }
-
   const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
   const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || 'localhost:3000';
-  const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+  const redirectUri = (process.env.GOOGLE_REDIRECT_URI || '').trim() || `${protocol}://${host}/api/auth/google/callback`;
+
+  // Always output redirect URI in DEVELOPMENT console as required by spec:
+  console.log('Google OAuth redirect URI:\n' + redirectUri);
+
+  if (!clientId) {
+    console.error('[AUTH_ERROR] Cannot start Google OAuth: GOOGLE_CLIENT_ID is not configured in environment.');
+    return sendAuthCallbackResponse(res, false, undefined, 'GOOGLE_CLIENT_ID missing in environment');
+  }
 
   const state = crypto.randomBytes(16).toString('hex');
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -74,7 +161,7 @@ apiRouter.get('/auth/google/start', (req, res) => {
   authUrl.searchParams.set('access_type', 'offline');
   authUrl.searchParams.set('state', state);
 
-  console.log('[AUTH] Redirecting to Google OAuth Account Chooser:', authUrl.toString());
+  console.log('[AUTH] Redirecting to Google OAuth Account Chooser with prompt=select_account');
   return res.redirect(authUrl.toString());
 });
 
@@ -86,14 +173,16 @@ apiRouter.get('/auth/google/callback', async (req, res) => {
 
   if (error || !code) {
     console.warn('[AUTH_CALLBACK] OAuth authorization error or cancellation from Google:', error);
-    return res.redirect('/?auth_error=' + encodeURIComponent(String(error || 'cancelled')));
+    return sendAuthCallbackResponse(res, false, undefined, `Google OAuth returned error: ${error || 'no_code'}`);
   }
 
   const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
   const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
   const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
   const host = (req.headers['x-forwarded-host'] as string) || req.get('host') || 'localhost:3000';
-  const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+  const redirectUri = (process.env.GOOGLE_REDIRECT_URI || '').trim() || `${protocol}://${host}/api/auth/google/callback`;
+
+  console.log('Google OAuth redirect URI:\n' + redirectUri);
 
   try {
     const tokenParams = new URLSearchParams({
@@ -113,7 +202,7 @@ apiRouter.get('/auth/google/callback', async (req, res) => {
     if (!tokenRes.ok) {
       const errBody = await tokenRes.text();
       console.error('[AUTH_CALLBACK] Code exchange error with Google:', tokenRes.status, errBody);
-      return res.redirect('/?auth_error=code_exchange_failed');
+      return sendAuthCallbackResponse(res, false, undefined, `Google token endpoint HTTP ${tokenRes.status}: ${errBody}`);
     }
 
     const tokenData = await tokenRes.json();
@@ -147,7 +236,7 @@ apiRouter.get('/auth/google/callback', async (req, res) => {
 
     if (!sub) {
       console.error('[AUTH_CALLBACK] Could not resolve Google identity claims from response.');
-      return res.redirect('/?auth_error=identity_resolution_failed');
+      return sendAuthCallbackResponse(res, false, undefined, 'Could not resolve Google sub identity claims');
     }
 
     const { user, isNew } = db.upsertGoogleUser({
@@ -183,10 +272,10 @@ apiRouter.get('/auth/google/callback', async (req, res) => {
       maxAge: 30 * 24 * 3600 * 1000,
     });
 
-    return res.redirect(`/?auth=success&token=${sessionToken}`);
+    return sendAuthCallbackResponse(res, true, sessionToken);
   } catch (err: any) {
     console.error('[AUTH_CALLBACK] Exception in callback route:', err);
-    return res.redirect('/?auth_error=server_exception');
+    return sendAuthCallbackResponse(res, false, undefined, err?.message || 'Server exception during callback processing');
   }
 });
 

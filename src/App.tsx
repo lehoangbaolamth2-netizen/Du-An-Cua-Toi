@@ -17,6 +17,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { AIAnalyzerModal } from './components/AIAnalyzerModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { GoogleLoginModal } from './components/GoogleLoginModal';
+import { LoginPage } from './components/LoginPage';
 
 import {
   PITCH_SENTENCE_PRESETS,
@@ -39,9 +40,28 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [currentLevel, setCurrentLevel] = useState<string>('ALL');
 
+  // Track browser path for /login route support
+  const [currentPath, setCurrentPath] = useState<string>(() =>
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPath(window.location.pathname);
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
   // Auth modals
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+
+  // If on /login page, render dedicated LoginPage
+  if (currentPath === '/login') {
+    return <LoginPage />;
+  }
 
   // Load and manage Flashcards with SRS
   const [cards, setCards] = useState<Flashcard[]>(() =>

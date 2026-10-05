@@ -1,11 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Loader2 } from 'lucide-react';
-
-interface Props {
-  isOpen: boolean;
-  onClose: () => void;
-}
+import { Loader2 } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -13,20 +8,35 @@ declare global {
   }
 }
 
-export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { loginWithGoogle, refreshUser } = useAuth();
+export const LoginPage: React.FC = () => {
+  const { user, isAuthenticated, loginWithGoogle, refreshUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [serverClientId, setServerClientId] = useState<string>('');
 
-  // Reset state when opening/closing
+  // Check URL query parameters for error on initial load (e.g. /login?error=google_auth_failed)
   useEffect(() => {
-    if (!isOpen) {
-      setErrorMessage(null);
-      setIsLoading(false);
-      return;
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get('error') || params.get('auth_error');
+      if (err) {
+        console.warn('[Google Auth] Detected error in URL params:', err);
+        setErrorMessage('Đăng nhập Google không thành công. Vui lòng thử lại.');
+      }
     }
+  }, []);
 
+  // If already authenticated, redirect to home / dashboard
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    }
+  }, [isAuthenticated, user]);
+
+  // Fetch client ID from server config dynamically
+  useEffect(() => {
     const loadConfig = async () => {
       try {
         const res = await fetch('/api/auth/config');
@@ -40,24 +50,22 @@ export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
         console.warn('[Google Auth] Could not fetch /api/auth/config:', e);
       }
     };
-
     loadConfig();
-  }, [isOpen]);
+  }, []);
 
   // Listen for postMessage from popup OAuth window
   useEffect(() => {
     const handleAuthMessage = async (event: MessageEvent) => {
       if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
-        console.log('[Google Auth Modal] Received GOOGLE_AUTH_SUCCESS from popup.');
+        console.log('[Google Auth] Received GOOGLE_AUTH_SUCCESS from popup callback.');
         const sessionToken = event.data.token;
         if (sessionToken) {
           localStorage.setItem('nihongo_session_token_v1', sessionToken);
           await refreshUser();
-          setIsLoading(false);
-          onClose();
+          window.location.href = '/';
         }
       } else if (event.data?.type === 'GOOGLE_AUTH_ERROR') {
-        console.warn('[Google Auth Modal] Received GOOGLE_AUTH_ERROR from popup:', event.data.error);
+        console.warn('[Google Auth] Received GOOGLE_AUTH_ERROR from popup callback:', event.data.error);
         setIsLoading(false);
         setErrorMessage('Đăng nhập Google không thành công. Vui lòng thử lại.');
       }
@@ -65,7 +73,7 @@ export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
     window.addEventListener('message', handleAuthMessage);
     return () => window.removeEventListener('message', handleAuthMessage);
-  }, [onClose, refreshUser]);
+  }, [refreshUser]);
 
   const getEffectiveClientId = (): string => {
     const fromEnv = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
@@ -103,7 +111,7 @@ export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
               const res = await loginWithGoogle({ access_token: tokenResponse.access_token });
               setIsLoading(false);
               if (res.success) {
-                onClose();
+                window.location.href = '/';
               } else {
                 setErrorMessage('Đăng nhập Google không thành công. Vui lòng thử lại.');
               }
@@ -168,21 +176,9 @@ export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 sm:p-8 space-y-6 shadow-2xl relative animate-scaleUp text-center">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          disabled={isLoading}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 transition cursor-pointer disabled:opacity-40"
-          aria-label="Đóng"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-indigo-500 selection:text-white">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 sm:p-8 space-y-6 shadow-2xl relative text-center">
         {/* Google Logo */}
         <div className="w-16 h-16 mx-auto rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-black/40">
           <svg className="w-8 h-8" viewBox="0 0 24 24">
@@ -259,6 +255,21 @@ export const GoogleLoginModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </>
             )}
           </button>
+        </div>
+
+        {/* Subtle Back link */}
+        <div className="pt-2 text-center">
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              window.history.pushState({}, '', '/');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="text-xs text-slate-500 hover:text-slate-300 transition"
+          >
+            ← Quay lại trang chủ
+          </a>
         </div>
       </div>
     </div>

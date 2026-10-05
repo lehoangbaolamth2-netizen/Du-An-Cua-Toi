@@ -165,7 +165,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (authError) {
         console.warn('[AuthContext] Returned from OAuth callback with error:', authError);
-        window.history.replaceState({}, document.title, window.location.pathname);
+        if (window.location.pathname !== '/login') {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
       }
     }
 
